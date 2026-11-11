@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "dアニメ字幕アシスタント (Jimaku + AI Whisper + Local Subtitles)",
+  "version": "1.0.0",
+  "description": "dアニメストア等の動画プレイヤーに日本語字幕を追加！Jimaku.cc自動検索、ローカル字幕ファイル(.srt/.ass/.vtt)読込、AIリアルタイム文字起こしに対応。",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://animestore.docomo.ne.jp/*",
+    "https://jimaku.cc/*",
+    "https://*.jimaku.cc/*",
+    "https://graphql.anilist.co/*",
+    "http://127.0.0.1:8765/*",
+    "http://localhost:8765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://animestore.docomo.ne.jp/*"
+      ],
+      "js": [
+        "parser.js",
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

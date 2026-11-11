@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>dアニメ字幕アシスタント</title>
+  <style>
+    body {
+      width: 310px;
+      margin: 0;
+      padding: 14px 16px;
+      background: #18191e;
+      color: #f3f4f6;
+      font-family: "Noto Sans JP", sans-serif;
+      font-size: 13px;
+    }
+    h2 {
+      margin: 0 0 10px 0;
+      font-size: 15px;
+      color: #ff7849;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .field {
+      margin-bottom: 10px;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      color: #9ca3af;
+      margin-bottom: 4px;
+    }
+    input {
+      width: 100%;
+      padding: 7px 9px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.35);
+      color: #fff;
+      font-size: 12px;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: none;
+      background: #eb5528;
+      color: #fff;
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    button:hover {
+      background: #ff6a3d;
+    }
+    .secondary {
+      background: rgba(255,255,255,0.12);
+      margin-top: 8px;
+    }
+    .hint {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+    a {
+      color: #ff7849;
+    }
+  </style>
+</head>
+<body>
+  <h2>🎬 dアニメ字幕アシスタント</h2>
+  <div class="field">
+    <label>Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank">無料取得</a>)</label>
+    <input type="password" id="apiKey" placeholder="APIキーを入力..." />
+  </div>
+  <div class="field">
+    <label>ローカルAI WhisperサーバーURL</label>
+    <input type="text" id="aiServerUrl" placeholder="http://127.0.0.1:8765" />
+  </div>
+  <button id="saveBtn">設定を保存</button>
+  <button id="togglePanelBtn" class="secondary">再生画面の字幕パネルを開閉</button>
+  <div class="hint">
+    ・再生画面右上の「💬 字幕」ボタンから自動検索・ファイル読込・AI文字起こしが使えます。<br/>
+    ・ショートカット: <b>Alt+S</b> (表示切替), <b>[ / ]</b> (0.5秒ズレ補正)
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
