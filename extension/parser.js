@@ -86,6 +86,21 @@
     let inEvents = false;
     let formatFields = ['layer', 'start', 'end', 'style', 'name', 'marginl', 'marginr', 'marginv', 'effect', 'text'];
 
+    // Pass 1: Check if this ASS file has dedicated Japanese vs Chinese styles
+    const stylesSeen = new Set();
+    for (const rawLine of lines) {
+      const l = rawLine.trim();
+      if (l.toLowerCase().startsWith('dialogue:')) {
+        const parts = l.slice(9).split(',');
+        if (parts.length > 3) stylesSeen.add(parts[3].trim());
+      }
+    }
+    const hasExplicitJpStyle = Array.from(stylesSeen).some((s) =>
+      /\b(jp|jpn|jap|japanese)\b|[-_](jp|jpn)$/i.test(s)
+    );
+    const isChineseStyle = (s) =>
+      /\b(cn|chs|cht|sc|tc|zh|chi|chinese)\b|[-_](cn|chs|cht|sc|tc)$/i.test(s);
+
     for (const rawLine of lines) {
       const line = rawLine.trim();
       if (!line || line.startsWith(';')) continue;
@@ -128,10 +143,14 @@
         // Skip pure drawing commands {\p1}...
         if (/\\p[1-9]/.test(rawText)) continue;
 
+        const style = styleIdx !== -1 ? parts[styleIdx] : '';
+        // Skip Chinese subtitle tracks in dual-language ASS files
+        if (isChineseStyle(style)) continue;
+        if (hasExplicitJpStyle && isChineseStyle(style)) continue;
+
         const start = parseTimeASS(parts[startIdx]);
         const end = parseTimeASS(parts[endIdx]);
         const text = cleanText(rawText);
-        const style = styleIdx !== -1 ? parts[styleIdx] : '';
 
         if (text && end > start) {
           cues.push({ start, end, text, style });

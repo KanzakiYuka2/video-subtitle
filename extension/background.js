@@ -2,7 +2,7 @@
  * Background Service Worker for d-anime Subtitle Assistant
  * Handles cross-origin API requests to:
  *  - Jimaku.cc API (search entries, list episode files, download subtitle file)
- *  - AniList GraphQL API (optional title -> anilist_id lookup)
+ *  - AniList GraphQL API (Japanese/partial title -> anilist_id + romaji/english/native lookup)
  *  - Local AI Whisper Server (http://127.0.0.1:8765)
  */
 
@@ -10,33 +10,131 @@ const JIMAKU_BASE = 'https://jimaku.cc/api';
 const ANILIST_URL = 'https://graphql.anilist.co';
 const DEFAULT_AI_SERVER = 'http://127.0.0.1:8765';
 
+const DEFAULT_PREFERRED_SOURCE =
+  'ABEMA,DMMTV,U-NEXT,UNEXT,Amazon,AMZN,Prime,Netflix,NF,NanakoRaws,NanokoRaws,shincaps,WebRip,BD';
+
 async function getSettings() {
   return new Promise((resolve) => {
     chrome.storage.local.get(
       {
         jimakuApiKey: '',
         aiServerUrl: DEFAULT_AI_SERVER,
-        fontSize: 28,
+        fontScale: 3.2, // Relative to video/viewport height (%)
         bottomPosition: 10,
-        bgOpacity: 0.65,
+        bgOpacity: 0.0,
         textColor: '#ffffff',
+        autoSearchApply: true,
+        preferredFormat: 'ass,srt,vtt',
+        preferredSource: DEFAULT_PREFERRED_SOURCE,
       },
       (items) => resolve(items)
     );
   });
 }
 
-async function searchAniList(title) {
+const KANJI_NUMS = {
+  一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+};
+const ROMAN_NUMS = {
+  ii: 2, iii: 3, iv: 4, v: 5, vi: 6, 'Ⅱ': 2, 'Ⅲ': 3, 'Ⅳ': 4, 'Ⅴ': 5,
+};
+
+/**
+ * Normalize full-width digits/alphabets to half-width
+ */
+function toHalfWidth(str) {
+  if (!str) return '';
+  return str.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s) =>
+    String.fromCharCode(s.charCodeAt(0) - 0xfee0)
+  );
+}
+
+/**
+ * Clean d-anime specific suffixes/decorations from work title
+ * e.g. "生徒会にも穴はある！ 【規制解除版】" -> "生徒会にも穴はある！"
+ */
+function normalizeAnimeTitle(rawTitle) {
+  if (!rawTitle) return '';
+  return rawTitle
+    .replace(/【.*?】|\[.*?\]|（.*?版.*?）|\(.*?版.*?\)|＜.*?版.*?＞/g, ' ')
+    .replace(/（吹替）|（字幕）|（テレビ放送版）|（オンエア版）|（完全版）/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Extract explicit season number from an anime title if present:
+ * e.g. "佐々木とピーちゃん シーズン2" -> 2
+ *      "佐々木とピーちゃんSeason2" -> 2
+ *      "推しの子 第2期" -> 2
+ *      "オーバーロードIV" -> 4
+ *      "生徒会にも穴はある！" -> 1 (default)
+ */
+function detectSeasonNumber(title) {
+  if (!title) return 1;
+  const hw = toHalfWidth(title);
+
+  // 1. Season X / シーズン X / 第X期 / X期 / S2 / 2nd Season
+  const m1 = hw.match(
+    /(?:Season|シーズン|第)\s*(\d+)\s*期?|(\d+)\s*(?:期|nd\s*Season|rd\s*Season|th\s*Season)|\bS(\d+)\b/i
+  );
+  if (m1) {
+    return parseInt(m1[1] || m1[2] || m1[3], 10);
+  }
+
+  // 2. Kanji season: 第二期 / 第2シーズン
+  const m2 = hw.match(/第([一二三四五六七八九十])(?:期|シーズン)/);
+  if (m2 && KANJI_NUMS[m2[1]]) {
+    return KANJI_NUMS[m2[1]];
+  }
+
+  // 3. Roman numerals at the end of title: II, III, IV, Ⅱ, Ⅲ
+  const m3 = hw.match(/(?:\s+|[^\w])(II|III|IV|V|VI|Ⅱ|Ⅲ|Ⅳ|Ⅴ)\s*$/i);
+  if (m3) {
+    const key = m3[1].toLowerCase();
+    if (ROMAN_NUMS[key] || ROMAN_NUMS[m3[1]]) {
+      return ROMAN_NUMS[key] || ROMAN_NUMS[m3[1]];
+    }
+  }
+
+  // 4. Trailing standalone number like "タイトル 2"
+  const m4 = hw.match(/\s+(\d)\s*$/);
+  if (m4) {
+    return parseInt(m4[1], 10);
+  }
+
+  return 1;
+}
+
+/**
+ * Extract base title without season suffix for broader AniList / Jimaku matching
+ * e.g. "佐々木とピーちゃんSeason2" -> "佐々木とピーちゃん"
+ */
+function stripSeasonSuffix(title) {
+  if (!title) return '';
+  const hw = toHalfWidth(title);
+  return hw
+    .replace(
+      /\s*(?:第[0-9一二三四五六七八九十]+(?:期|シーズン)|(?:Season|シーズン)\s*\d+|\d+\s*期|\bS\d+\b|\d+(?:nd|rd|th)\s*Season|(?:II|III|IV|Ⅱ|Ⅲ|Ⅳ))\s*$/i,
+      ''
+    )
+    .replace(/[！!？?〜～\-－:：]+$/g, '')
+    .trim();
+}
+
+async function searchAniList(searchQuery) {
   const query = `
     query ($search: String) {
-      Page(page: 1, perPage: 5) {
-        media(search: $search, type: ANIME) {
+      Page(page: 1, perPage: 10) {
+        media(search: $search, type: ANIME, sort: [SEARCH_MATCH, POPULARITY_DESC]) {
           id
+          format
           title {
             native
             romaji
             english
           }
+          synonyms
           seasonYear
           episodes
         }
@@ -46,14 +144,39 @@ async function searchAniList(title) {
   const res = await fetch(ANILIST_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ query, variables: { search: title } }),
+    body: JSON.stringify({ query, variables: { search: searchQuery } }),
   });
   if (!res.ok) return [];
   const json = await res.json();
-  return json?.data?.Page?.media || [];
+  const list = json?.data?.Page?.media || [];
+  const mainList = list.filter(
+    (m) => m.format !== 'MUSIC' && !/\bPV\b|\bCM\b/i.test(m.title?.romaji || '')
+  );
+  return mainList.length > 0 ? mainList : list;
 }
 
-async function jimakuSearch(title, apiKey) {
+/**
+ * Check if an entry or AniList media object matches the target season number
+ */
+function scoreSeasonMatch(titlesArray, targetSeason) {
+  const combined = titlesArray.filter(Boolean).join(' ');
+  const detected = detectSeasonNumber(combined);
+  if (targetSeason > 1) {
+    // User explicitly wants Season 2+ -> strongly reward matching season, penalize Season 1!
+    return detected === targetSeason ? 500 : -300;
+  } else {
+    // User wants Season 1 -> reward Season 1, penalize Season 2+
+    return detected === 1 ? 200 : -200;
+  }
+}
+
+/**
+ * Multi-stage Season-Aware fuzzy search on Jimaku.cc:
+ * 1. Detect targetSeason (e.g. Season 2 vs Season 1) and baseTitle ("佐々木とピーちゃん")
+ * 2. Search AniList by baseTitle AND cleanTitle so we get all seasons (S1, S2, etc.), then sort by season match!
+ * 3. Search Jimaku by `anilist_id` AND by `query` (cleanTitle + baseTitle), then rank entries by season match!
+ */
+async function jimakuSearch(rawTitle, apiKey) {
   if (!apiKey) {
     throw new Error('Jimaku APIキーが設定されていません。パネルの「⚙ 設定」から登録してください。');
   }
@@ -62,53 +185,268 @@ async function jimakuSearch(title, apiKey) {
     Accept: 'application/json',
   };
 
-  // 1. Try direct query search on Jimaku.cc
-  const cleanTitle = title
-    .replace(/（.*?）|\(.*?\)|【.*?】|\[.*?\]/g, ' ')
-    .replace(/第\d+期|Season\s*\d+/gi, (m) => ` ${m} `)
-    .trim();
+  const cleanTitle = normalizeAnimeTitle(rawTitle);
+  const targetSeason = detectSeasonNumber(cleanTitle);
+  const baseTitle = stripSeasonSuffix(cleanTitle) || cleanTitle;
 
-  const searchUrl = `${JIMAKU_BASE}/entries/search?query=${encodeURIComponent(cleanTitle)}`;
-  let entries = [];
-  const res = await fetch(searchUrl, { headers });
-  if (res.status === 401 || res.status === 403) {
-    throw new Error('Jimaku APIキーが無効です（401 Unauthorized）。設定を確認してください。');
-  }
-  if (res.ok) {
-    entries = await res.json();
-  }
+  const collectedEntries = [];
+  const seenIds = new Set();
 
-  // 2. Also query AniList to find exact anilist_id match if direct search returned nothing or to enrich results
-  if (!entries || entries.length === 0) {
-    try {
-      const mediaList = await searchAniList(cleanTitle);
-      for (const media of mediaList.slice(0, 2)) {
-        const byIdRes = await fetch(
-          `${JIMAKU_BASE}/entries/search?anilist_id=${media.id}`,
-          { headers }
+  const addEntries = (arr, matchSource) => {
+    if (!Array.isArray(arr)) return;
+    for (const item of arr) {
+      if (item && item.id && !seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        const entrySeasonScore = scoreSeasonMatch(
+          [item.japanese_name, item.name, item.english_name],
+          targetSeason
         );
-        if (byIdRes.ok) {
-          const idEntries = await byIdRes.json();
-          if (Array.isArray(idEntries) && idEntries.length > 0) {
-            entries.push(...idEntries);
-          }
-        }
+        collectedEntries.push({
+          ...item,
+          _matchSource: matchSource,
+          _seasonScore: entrySeasonScore,
+        });
       }
-    } catch (_) {
-      // Ignore AniList fallback errors
+    }
+  };
+
+  // Query AniList (using baseTitle so full franchise/seasons are returned!) and Jimaku in parallel
+  const queriesToRun = [
+    searchAniList(baseTitle).catch(() => []),
+    fetch(`${JIMAKU_BASE}/entries/search?query=${encodeURIComponent(cleanTitle)}`, { headers }).catch(() => null),
+  ];
+  if (baseTitle !== cleanTitle) {
+    queriesToRun.push(
+      fetch(`${JIMAKU_BASE}/entries/search?query=${encodeURIComponent(baseTitle)}`, { headers }).catch(() => null)
+    );
+  }
+
+  const [anilistMedia, directRes, baseRes] = await Promise.all(queriesToRun);
+
+  if (directRes) {
+    if (directRes.status === 401 || directRes.status === 403) {
+      throw new Error('Jimaku APIキーが無効です（401 Unauthorized）。設定を確認してください。');
+    }
+    if (directRes.ok) {
+      addEntries(await directRes.json(), 'direct');
+    }
+  }
+  if (baseRes && baseRes.ok) {
+    addEntries(await baseRes.json(), 'base_query');
+  }
+
+  // Sort AniList media candidates so the matching season (e.g. Season 2) is queried FIRST
+  let mediaList = Array.isArray(anilistMedia) ? [...anilistMedia] : [];
+  if (mediaList.length === 0 && baseTitle !== cleanTitle) {
+    mediaList = await searchAniList(cleanTitle).catch(() => []);
+  }
+
+  if (mediaList.length > 0) {
+    mediaList.sort((a, b) => {
+      const scoreA = scoreSeasonMatch(
+        [a.title?.native, a.title?.romaji, a.title?.english, ...(a.synonyms || [])],
+        targetSeason
+      );
+      const scoreB = scoreSeasonMatch(
+        [b.title?.native, b.title?.romaji, b.title?.english, ...(b.synonyms || [])],
+        targetSeason
+      );
+      return scoreB - scoreA;
+    });
+
+    const idPromises = mediaList.slice(0, 4).map((m) =>
+      fetch(`${JIMAKU_BASE}/entries/search?anilist_id=${m.id}`, { headers })
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => [])
+    );
+    const idResults = await Promise.all(idPromises);
+    for (const resArr of idResults) {
+      addEntries(resArr, 'anilist_id');
     }
   }
 
-  // Deduplicate by entry.id
-  const seen = new Set();
-  return (entries || []).filter((e) => {
-    if (!e || seen.has(e.id)) return false;
-    seen.add(e.id);
-    return true;
-  });
+  // Fallback: if still empty, try first keyword chunk or romaji/english title from AniList
+  if (collectedEntries.length === 0) {
+    const fallbackQueries = new Set();
+    const firstPart = baseTitle.split(/[\s　！!？?〜～\-－:：・]/)[0];
+    if (firstPart && firstPart.length >= 2 && firstPart !== cleanTitle) {
+      fallbackQueries.add(firstPart);
+    }
+    if (mediaList && mediaList[0]) {
+      if (mediaList[0].title?.romaji) fallbackQueries.add(mediaList[0].title.romaji);
+      if (mediaList[0].title?.english) fallbackQueries.add(mediaList[0].title.english);
+    }
+
+    for (const q of Array.from(fallbackQueries).slice(0, 3)) {
+      const r = await fetch(`${JIMAKU_BASE}/entries/search?query=${encodeURIComponent(q)}`, { headers }).catch(
+        () => null
+      );
+      if (r && r.ok) {
+        addEntries(await r.json(), 'fallback_query');
+        if (collectedEntries.length > 0) break;
+      }
+    }
+  }
+
+  // Sort collected entries so the exact targetSeason match is ALWAYS #1
+  collectedEntries.sort((a, b) => b._seasonScore - a._seasonScore);
+  return collectedEntries;
 }
 
-async function jimakuGetFiles(entryId, episodeNumber, apiKey) {
+/**
+ * Extract episode number from a subtitle filename carefully
+ */
+function extractEpisodeFromFilename(filename) {
+  if (!filename) return [];
+  const cleaned = filename
+    .replace(/\.(srt|ass|ssa|vtt)$/i, '')
+    .replace(/\b(1080p|720p|480p|2160p|4K|10bit|8bit|x264|x265|h264|h265|hevc|aac|flac|ac3|eac3|assx2|mp4|mkv|mpeg2|at-x)\b/gi, '')
+    .replace(/\b\d{3,4}x\d{3,4}\b/gi, '') // e.g. 1440x1080
+    .replace(/\[\s*[0-9A-Fa-f]{8}\s*\]/g, '');
+
+  const found = [];
+
+  // 1. S01E02 or 01x02 pattern
+  const seMatches = [...cleaned.matchAll(/\bS\d+\s*E(\d{1,3})\b/gi)];
+  if (seMatches.length > 0) {
+    return seMatches.map((m) => parseInt(m[1], 10));
+  }
+
+  // 2. 第02話 or 02話
+  const jaMatches = [...cleaned.matchAll(/第?\s*(\d{1,3})\s*話/g)];
+  if (jaMatches.length > 0) {
+    return jaMatches.map((m) => parseInt(m[1], 10));
+  }
+
+  // 3. E02 / EP02 / Episode 02
+  const epMatches = [...cleaned.matchAll(/(?:^|[\s._\-[])(?:EP?|Episode)\s*(\d{1,3})(?:$|[\s._\-\]v])/gi)];
+  if (epMatches.length > 0) {
+    return epMatches.map((m) => parseInt(m[1], 10));
+  }
+
+  // 4. " - 02 " or " - 02v2"
+  const dashMatches = [...cleaned.matchAll(/\s-\s*(\d{1,3})(?:v\d+)?(?:$|[\s._\-[(\]])/g)];
+  if (dashMatches.length > 0) {
+    return dashMatches.map((m) => parseInt(m[1], 10));
+  }
+
+  // 5. Standalone [02] or .02. or _02_
+  const bracketMatches = [...cleaned.matchAll(/(?:[._\-[])\s*(\d{1,3})(?:v\d+)?\s*(?:[._\-]|\])/g)];
+  for (const m of bracketMatches) {
+    const n = parseInt(m[1], 10);
+    if (n > 0 && n < 1900) found.push(n);
+  }
+
+  return found;
+}
+
+/**
+ * Score & sort subtitle files:
+ *  1. Named Streaming Service / Source Priority (Netflix, ABEMA, DMMTV, Prime, U-NEXT...) takes PRIMARY precedence
+ *     when matched! (Generic tags like WebRip/BD act as secondary tie-breakers)
+ *  2. Format Priority (ASS vs SRT)
+ *  3. Pure Japanese track bonus (penalize bilingual [CHS, JPN] / [CHT, JPN] so dual-language Chinese+Japanese subs don't beat pure JPN subs!)
+ */
+function filterAndRankFiles(files, targetEpisode, preferredFormatStr, preferredSourceStr) {
+  const validFiles = (files || []).filter((f) => /\.(srt|ass|ssa|vtt)$/i.test(f.name || ''));
+  if (validFiles.length === 0) return [];
+
+  const formatOrder = (preferredFormatStr || 'ass,srt,vtt')
+    .toLowerCase()
+    .split(/[,、\s]+/)
+    .map((s) => s.replace(/^\./, '').trim())
+    .filter(Boolean);
+
+  const sourceOrder = (preferredSourceStr || DEFAULT_PREFERRED_SOURCE)
+    .toLowerCase()
+    .split(/[,、\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // Built-in tier aliases so e.g. "Amazon" also matches "AMZN"/"Prime", "NanokoRaws" also matches "NanakoRaws", "U-NEXT" matches "UNEXT"
+  const KEYWORD_ALIASES = {
+    amazon: ['amazon', 'amzn', 'prime'],
+    'u-next': ['u-next', 'unext'],
+    netflix: ['netflix', '.nf.', '[nf]'],
+    nanokoraws: ['nanokoraws', 'nanakoraws'],
+    nanakoraws: ['nanakoraws', 'nanokoraws'],
+    dmmtv: ['dmmtv', 'dmm'],
+    abema: ['abema'],
+    shincaps: ['shincaps'],
+  };
+
+  const genericTags = new Set(['webrip', 'web-dl', 'web', 'bd', 'bdrip', 'bluray', 'tv', 'at-x']);
+
+  // Check if we have exact episode matches
+  let candidateFiles = validFiles;
+  let hasExactEpisodeMatch = false;
+
+  if (targetEpisode != null && targetEpisode > 0) {
+    const epMatches = validFiles.filter((f) => {
+      const eps = extractEpisodeFromFilename(f.name || '');
+      return eps.includes(Number(targetEpisode));
+    });
+    if (epMatches.length > 0) {
+      candidateFiles = epMatches;
+      hasExactEpisodeMatch = true;
+    }
+  }
+
+  const scored = candidateFiles.map((file) => {
+    const name = file.name || '';
+    const lower = name.toLowerCase();
+    const extMatch = lower.match(/\.(srt|ass|ssa|vtt)$/i);
+    let ext = extMatch ? extMatch[1].toLowerCase() : '';
+    if (ext === 'ssa') ext = 'ass';
+
+    // 1. Source keyword score:
+    // Named streaming platforms / release groups (Platinum: ABEMA, DMMTV, U-NEXT, Amazon -> Gold: Netflix -> Silver: NanokoRaws -> Bronze: shincaps)
+    // get primary weight (1000+) in exact user-specified order.
+    let sourceScore = 0;
+    for (let i = 0; i < sourceOrder.length; i++) {
+      const kw = sourceOrder[i];
+      if (!kw) continue;
+      const patterns = KEYWORD_ALIASES[kw] || [kw];
+      const matched = patterns.some((p) => lower.includes(p));
+      if (matched) {
+        const rankWeight = sourceOrder.length - i;
+        if (!genericTags.has(kw)) {
+          sourceScore = 1000 + rankWeight * 80;
+          break;
+        } else if (sourceScore === 0) {
+          sourceScore = rankWeight * 5;
+        }
+      }
+    }
+
+    // 2. Format score (ASS vs SRT)
+    let formatRank = formatOrder.indexOf(ext);
+    if (formatRank === -1) formatRank = formatOrder.length;
+    const formatScore = (formatOrder.length - formatRank) * 100;
+
+    // 3. Language purity score:
+    // Penalize dual-language Chinese+Japanese files like "[CHS, JPN]" or "CHS_JPN"
+    // so pure Japanese files ("[JPN]", ".ja[cc]", ".ja.") always rank higher!
+    let langScore = 0;
+    if (/\b(chs|cht|sc|tc|zh|chi)\b/i.test(lower)) {
+      langScore = -150;
+    } else if (/\.ja\b|\[jpn\]|\[ja\]/i.test(lower)) {
+      langScore = 30;
+    }
+
+    const totalScore = sourceScore + formatScore + langScore;
+    return {
+      ...file,
+      _score: totalScore,
+      _exactEpisode: hasExactEpisodeMatch,
+    };
+  });
+
+  scored.sort((a, b) => b._score - a._score || (a.name || '').localeCompare(b.name || ''));
+  return scored;
+}
+
+async function jimakuGetFiles(entryId, episodeNumber, apiKey, settings) {
   if (!apiKey) {
     throw new Error('Jimaku APIキーが設定されていません。');
   }
@@ -136,9 +474,11 @@ async function jimakuGetFiles(entryId, episodeNumber, apiKey) {
     files = await allRes.json();
   }
 
-  // Filter to subtitle extensions (.srt, .ass, .ssa, .vtt)
-  return (files || []).filter((f) =>
-    /\.(srt|ass|ssa|vtt)$/i.test(f.name || '')
+  return filterAndRankFiles(
+    files,
+    episodeNumber,
+    settings.preferredFormat,
+    settings.preferredSource
   );
 }
 
@@ -148,7 +488,6 @@ async function downloadSubtitleText(url) {
     throw new Error(`字幕ファイルのダウンロードに失敗しました (${res.status})`);
   }
   const buffer = await res.arrayBuffer();
-  // Detect UTF-16 BOM or decode as UTF-8
   const bytes = new Uint8Array(buffer);
   let encoding = 'utf-8';
   if (bytes.length >= 2) {
@@ -202,7 +541,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const files = await jimakuGetFiles(
             message.entryId,
             message.episode,
-            apiKey
+            apiKey,
+            {
+              preferredFormat: message.preferredFormat ?? settings.preferredFormat,
+              preferredSource: message.preferredSource ?? settings.preferredSource,
+            }
           );
           sendResponse({ ok: true, files });
           break;
@@ -243,5 +586,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     }
   })();
-  return true; // Async response
+  return true;
 });

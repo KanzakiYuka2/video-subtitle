@@ -1,10 +1,11 @@
 /**
  * Content Script for dアニメ字幕アシスタント
- * - Detects d-anime work title & episode number automatically via WS010105 API & DOM selectors
- * - Searches & loads Japanese subtitle files directly from Jimaku.cc
- * - Supports Drag & Drop / file picker for .srt, .vtt, .ass, .ssa
- * - Supports Real-Time AI Transcription via local Whisper server (WebAudio / WebSpeech fallback)
- * - Syncs subtitle display with <video> currentTime + customizable offset & styling
+ * - Stops keyboard event propagation when panel inputs are focused or panel is hovered/active
+ *   so d-anime player shortcuts (Space, Arrow keys, F, M, Enter, etc.) never hijack typing!
+ * - Detects d-anime work title (auto-cleans 【規制解除版】 etc.) & episode number via WS010105 API & DOM
+ * - Automatically searches & applies best matching subtitle on page entry / episode change
+ * - Supports format priority (ASS vs SRT) & release source priority (Netflix, ABEMA, WebRip, BD...)
+ * - Supports 100% transparent subtitle background with crisp outline
  */
 
 (function () {
@@ -17,9 +18,11 @@
     cues: [], // Array<{ start: number, end: number, text: string }>
     offsetSec: 0.0,
     sourceLabel: '未読込',
+    lastAutoSearchedPartId: '',
     workInfo: {
       partId: '',
       workTitle: '',
+      cleanTitle: '',
       partDispNumber: '',
       partTitle: '',
       episodeNumber: null,
@@ -27,22 +30,19 @@
     settings: {
       jimakuApiKey: '',
       aiServerUrl: 'http://127.0.0.1:8765',
-      fontSize: 28,
+      fontScale: 3.2, // Relative to video/viewport height (%)
       bottomPosition: 10,
-      bgOpacity: 0.65,
+      bgOpacity: 0.0, // Default to transparent background as requested
       textColor: '#ffffff',
+      autoSearchApply: true,
+      preferredFormat: 'ass,srt,vtt',
+      preferredSource: 'ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,WebRip,BD',
     },
     ai: {
       active: false,
-      mode: 'whisper', // 'whisper' (local GPU server) or 'webspeech'
+      mode: 'whisper',
       chunkSec: 3.5,
       timerId: null,
-      audioCtx: null,
-      sourceNode: null,
-      processorNode: null,
-      pcmBuffer: [],
-      sampleRate: 16000,
-      captureStartVideoTime: 0,
       busy: false,
       recognition: null,
     },
@@ -54,11 +54,36 @@
   let panelEl = null;
   let currentVideo = null;
 
+  /**
+   * Strip d-anime store tags like 【規制解除版】, （吹替版）, etc.
+   */
+  function cleanWorkTitle(rawTitle) {
+    if (!rawTitle) return '';
+    return rawTitle
+      .replace(/【.*?】|\[.*?\]|（.*?版.*?）|\(.*?版.*?\)|＜.*?版.*?＞/g, ' ')
+      .replace(/（吹替）|（字幕）|（テレビ放送版）|（オンエア版）|（完全版）/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  const LEGACY_DEFAULT_SOURCES = new Set([
+    'Netflix,ABEMA,WebRip,BD',
+    'Netflix,ABEMA,DMMTV,Prime,U-NEXT,WebRip,BD',
+  ]);
+  const NEW_DEFAULT_SOURCE =
+    'ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,WebRip,BD';
+
   // Load saved settings
   function loadSettings() {
     return new Promise((resolve) => {
       chrome.storage.local.get(state.settings, (items) => {
+        // Migrate legacy default source list to the new Platinum/Gold/Silver/Bronze order
+        if (!items.preferredSource || LEGACY_DEFAULT_SOURCES.has(items.preferredSource)) {
+          items.preferredSource = NEW_DEFAULT_SOURCE;
+          chrome.storage.local.set({ preferredSource: NEW_DEFAULT_SOURCE });
+        }
         Object.assign(state.settings, items);
+        syncSettingsToUI();
         applyOverlayStyles();
         resolve(state.settings);
       });
@@ -86,7 +111,6 @@
   // Parse Japanese episode string like "第12話", "12話", "#03", "Episode 5" -> integer
   function parseEpisodeNumber(dispStr) {
     if (!dispStr) return null;
-    // Convert full-width digits to half-width
     const normalized = dispStr.replace(/[０-９]/g, (s) =>
       String.fromCharCode(s.charCodeAt(0) - 0xfee0)
     );
@@ -117,11 +141,13 @@
             state.workInfo = {
               partId,
               workTitle: data.workTitle || '',
+              cleanTitle: cleanWorkTitle(data.workTitle || ''),
               partDispNumber: data.partDispNumber || '',
               partTitle: data.partTitle || '',
               episodeNumber: parseEpisodeNumber(data.partDispNumber),
             };
             updateMetadataUI();
+            await maybeAutoSearchAndApply();
             return state.workInfo;
           }
         }
@@ -136,23 +162,34 @@
     const t3 = document.querySelector('.backInfoTxt3')?.textContent?.trim() || '';
     if (t1) {
       state.workInfo = {
-        partId,
+        partId: partId || t1 + '_' + t2,
         workTitle: t1,
+        cleanTitle: cleanWorkTitle(t1),
         partDispNumber: t2,
         partTitle: t3,
         episodeNumber: parseEpisodeNumber(t2),
       };
       updateMetadataUI();
+      await maybeAutoSearchAndApply();
     }
     return state.workInfo;
+  }
+
+  async function maybeAutoSearchAndApply() {
+    if (!state.settings.autoSearchApply) return;
+    if (!state.settings.jimakuApiKey) return;
+    const key = `${state.workInfo.partId}_${state.workInfo.cleanTitle}_${state.workInfo.episodeNumber}`;
+    if (!state.workInfo.cleanTitle || key === state.lastAutoSearchedPartId) return;
+    state.lastAutoSearchedPartId = key;
+    await handleJimakuSearch({ autoApplyBest: true });
   }
 
   function updateMetadataUI() {
     if (!panelEl) return;
     const titleInput = panelEl.querySelector('#dsub-search-title');
     const epInput = panelEl.querySelector('#dsub-search-ep');
-    if (titleInput && state.workInfo.workTitle && !titleInput.dataset.userEdited) {
-      titleInput.value = state.workInfo.workTitle;
+    if (titleInput && state.workInfo.cleanTitle && !titleInput.dataset.userEdited) {
+      titleInput.value = state.workInfo.cleanTitle;
     }
     if (epInput && state.workInfo.episodeNumber != null && !epInput.dataset.userEdited) {
       epInput.value = state.workInfo.episodeNumber;
@@ -191,6 +228,8 @@
     // 3. Control Panel
     panelEl = document.createElement('div');
     panelEl.id = 'danime-sub-panel';
+    // Make panel focusable so clicking anywhere inside keeps focus inside the panel
+    panelEl.tabIndex = -1;
     panelEl.innerHTML = `
       <div class="dsub-header">
         <div class="dsub-title">🎬 dアニメ字幕アシスタント</div>
@@ -208,16 +247,16 @@
         <!-- Tab 1: Jimaku.cc Search -->
         <div class="dsub-section active" id="dsub-tab-jimaku">
           <div class="dsub-row">
-            <input type="text" class="dsub-input" id="dsub-search-title" placeholder="アニメタイトル (自動取得)" />
+            <input type="text" class="dsub-input" id="dsub-search-title" placeholder="アニメタイトル (日本語・英語・略称OK)" />
             <input type="number" class="dsub-input" id="dsub-search-ep" placeholder="話数" style="width: 68px;" min="0" />
           </div>
           <div class="dsub-row">
             <button class="dsub-btn dsub-btn-primary" id="dsub-jimaku-search-btn" style="width: 100%;">
-              Jimaku.cc から日本語字幕を検索
+              Jimaku.cc から検索＆最適字幕を適用
             </button>
           </div>
           <div class="dsub-status" id="dsub-jimaku-status">
-            再生中の作品タイトルから自動で日本語字幕(.srt/.ass)を検索します。
+            再生中の作品タイトルから自動で日本語字幕(.ass/.srt)を検索・適用します。
           </div>
           <div class="dsub-list" id="dsub-jimaku-results" style="display: none;"></div>
         </div>
@@ -259,25 +298,45 @@
 
         <!-- Tab 4: Settings -->
         <div class="dsub-section" id="dsub-tab-settings">
+          <div class="dsub-row">
+            <label class="dsub-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="checkbox" id="dsub-set-autoapply" checked />
+              動画を開いた時に自動で字幕を検索・適用する
+            </label>
+          </div>
+          <div class="dsub-row">
+            <span class="dsub-label">優先フォーマット</span>
+            <select class="dsub-select" id="dsub-set-format" style="width: 185px;">
+              <option value="ass,srt,vtt">ASS 優先 (.ass → .srt)</option>
+              <option value="srt,ass,vtt">SRT 優先 (.srt → .ass)</option>
+            </select>
+          </div>
           <div>
-            <div class="dsub-label" style="margin-bottom: 4px;">Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank" rel="noopener" style="color:#ff7849;">無料取得はこちら</a>)</div>
+            <div class="dsub-label" style="margin-bottom: 4px;">優先ソース順 (Platinum: ABEMA/DMM/U-NEXT/Amazon → Gold: Netflix → Silver: NanokoRaws → Bronze: shincaps)</div>
+            <input type="text" class="dsub-input" id="dsub-set-source" placeholder="ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,WebRip,BD" />
+          </div>
+          <div>
+            <div class="dsub-label" style="margin-bottom: 4px;">Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank" rel="noopener" style="color:#ff7849;">無料取得</a>)</div>
             <input type="password" class="dsub-input" id="dsub-set-apikey" placeholder="Jimaku API Key を貼り付け" />
+          </div>
+          <div class="dsub-row">
+            <span class="dsub-label">文字サイズ比率 (<span id="dsub-val-fontsize">3.2</span>%)</span>
+            <input type="range" id="dsub-set-fontsize" min="1.5" max="6.5" step="0.1" value="3.2" style="width: 150px;" />
+          </div>
+          <div class="dsub-row">
+            <span class="dsub-label">下からの位置 (<span id="dsub-val-bottom">10</span>%)</span>
+            <input type="range" id="dsub-set-bottom" min="2" max="85" value="10" style="width: 150px;" />
+          </div>
+          <div class="dsub-row">
+            <span class="dsub-label">背景の不透明度 (<span id="dsub-val-opacity">0% 透明</span>)</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="range" id="dsub-set-opacity" min="0" max="100" value="0" style="width: 110px;" />
+              <button class="dsub-btn" id="dsub-transparent-btn" style="padding:3px 6px;font-size:11px;" title="背景を完全透明にする">透明</button>
+            </div>
           </div>
           <div>
             <div class="dsub-label" style="margin-bottom: 4px;">ローカルAIサーバーURL</div>
             <input type="text" class="dsub-input" id="dsub-set-aiurl" placeholder="http://127.0.0.1:8765" />
-          </div>
-          <div class="dsub-row">
-            <span class="dsub-label">文字サイズ (<span id="dsub-val-fontsize">28</span>px)</span>
-            <input type="range" id="dsub-set-fontsize" min="16" max="54" value="28" style="width: 160px;" />
-          </div>
-          <div class="dsub-row">
-            <span class="dsub-label">下からの位置 (<span id="dsub-val-bottom">10</span>%)</span>
-            <input type="range" id="dsub-set-bottom" min="2" max="85" value="10" style="width: 160px;" />
-          </div>
-          <div class="dsub-row">
-            <span class="dsub-label">背景の不透明度 (<span id="dsub-val-opacity">65</span>%)</span>
-            <input type="range" id="dsub-set-opacity" min="0" max="100" value="65" style="width: 160px;" />
           </div>
           <button class="dsub-btn dsub-btn-primary" id="dsub-save-settings-btn">設定を保存</button>
         </div>
@@ -286,7 +345,7 @@
       <!-- Footer: Always-accessible sync offset & visibility toggle -->
       <div class="dsub-footer">
         <div class="dsub-row">
-          <span class="dsub-label">表示タイミング調整: <b id="dsub-offset-val">0.0s</b></span>
+          <span class="dsub-label">タイミング調整: <b id="dsub-offset-val">0.0s</b></span>
           <div class="dsub-offset-controls">
             <button class="dsub-btn" data-offset="-5" title="OP/提供スキップ調整 (-5秒)">-5s</button>
             <button class="dsub-btn" data-offset="-0.5">-0.5s</button>
@@ -306,6 +365,7 @@
     document.body.appendChild(panelEl);
 
     bindPanelEvents();
+    syncSettingsToUI();
     applyOverlayStyles();
   }
 
@@ -343,13 +403,63 @@
     });
   }
 
+  function computeResponsiveFontSizePx() {
+    const scale = Number(state.settings.fontScale) || 3.2;
+    const v = currentVideo || document.querySelector('video');
+    let baseHeight = window.innerHeight;
+    if (v) {
+      const rect = v.getBoundingClientRect();
+      if (rect && rect.height > 100) {
+        baseHeight = rect.height;
+      }
+    }
+    return Math.max(12, Math.round((baseHeight * scale) / 100 * 10) / 10);
+  }
+
   function applyOverlayStyles() {
     if (!overlayEl || !subBoxEl) return;
     overlayEl.style.bottom = `${state.settings.bottomPosition}%`;
-    subBoxEl.style.fontSize = `${state.settings.fontSize}px`;
+    const fontPx = computeResponsiveFontSizePx();
+    subBoxEl.style.fontSize = `${fontPx}px`;
     subBoxEl.style.color = state.settings.textColor || '#ffffff';
-    subBoxEl.style.backgroundColor = `rgba(0, 0, 0, ${state.settings.bgOpacity})`;
+    const op = Number(state.settings.bgOpacity ?? 0);
+    if (op <= 0.01) {
+      subBoxEl.style.backgroundColor = 'transparent';
+    } else {
+      subBoxEl.style.backgroundColor = `rgba(0, 0, 0, ${op})`;
+    }
     overlayEl.style.display = state.enabled ? 'block' : 'none';
+  }
+
+  function syncSettingsToUI() {
+    if (!panelEl) return;
+    const apiKeyInput = panelEl.querySelector('#dsub-set-apikey');
+    const aiUrlInput = panelEl.querySelector('#dsub-set-aiurl');
+    const fontSizeInput = panelEl.querySelector('#dsub-set-fontsize');
+    const bottomInput = panelEl.querySelector('#dsub-set-bottom');
+    const opacityInput = panelEl.querySelector('#dsub-set-opacity');
+    const autoApplyInput = panelEl.querySelector('#dsub-set-autoapply');
+    const formatInput = panelEl.querySelector('#dsub-set-format');
+    const sourceInput = panelEl.querySelector('#dsub-set-source');
+
+    const scale = Number(state.settings.fontScale) || 3.2;
+    if (apiKeyInput) apiKeyInput.value = state.settings.jimakuApiKey || '';
+    if (aiUrlInput) aiUrlInput.value = state.settings.aiServerUrl || 'http://127.0.0.1:8765';
+    if (fontSizeInput) fontSizeInput.value = scale;
+    if (bottomInput) bottomInput.value = state.settings.bottomPosition;
+
+    const opPct = Math.round((state.settings.bgOpacity ?? 0) * 100);
+    if (opacityInput) opacityInput.value = opPct;
+    if (autoApplyInput) autoApplyInput.checked = Boolean(state.settings.autoSearchApply);
+    if (formatInput) formatInput.value = state.settings.preferredFormat || 'ass,srt,vtt';
+    if (sourceInput) sourceInput.value = state.settings.preferredSource || NEW_DEFAULT_SOURCE;
+
+    const fsLabel = panelEl.querySelector('#dsub-val-fontsize');
+    const btLabel = panelEl.querySelector('#dsub-val-bottom');
+    const opLabel = panelEl.querySelector('#dsub-val-opacity');
+    if (fsLabel) fsLabel.textContent = scale.toFixed(1);
+    if (btLabel) btLabel.textContent = state.settings.bottomPosition;
+    if (opLabel) opLabel.textContent = opPct === 0 ? '0% 透明' : `${opPct}%`;
   }
 
   function updateBadge(text) {
@@ -362,6 +472,49 @@
     state.cues = cues || [];
     updateBadge(`${label} (${state.cues.length}行)`);
     renderCurrentSubtitle();
+  }
+
+  /**
+   * Fix Issue #1: Prevent d-anime player from hijacking keyboard events (Arrow keys, Space, F, M, Enter, etc.)
+   * when the user is typing in or interacting with the subtitle panel.
+   */
+  function setupKeyboardIsolation() {
+    const isInsidePanel = (target) => {
+      if (!panelEl || !panelEl.classList.contains('open')) return false;
+      if (target && panelEl.contains(target)) return true;
+      if (document.activeElement && panelEl.contains(document.activeElement)) return true;
+      return false;
+    };
+
+    const stopPlayerKeys = (e) => {
+      if (!isInsidePanel(e.target)) return;
+
+      // Allow Alt+S global toggle even inside panel
+      if (e.altKey && (e.key === 's' || e.key === 'S')) return;
+
+      // If Enter is pressed inside the search title or episode input, trigger Jimaku search!
+      if (
+        e.type === 'keydown' &&
+        e.key === 'Enter' &&
+        e.target &&
+        (e.target.id === 'dsub-search-title' || e.target.id === 'dsub-search-ep')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        handleJimakuSearch({ autoApplyBest: true });
+        return;
+      }
+
+      // Stop propagation in capture phase so d-anime's document/window listeners never see the key!
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    };
+
+    // Register in capture phase (true) on window & document so we run before d-anime's listeners
+    window.addEventListener('keydown', stopPlayerKeys, true);
+    window.addEventListener('keyup', stopPlayerKeys, true);
+    window.addEventListener('keypress', stopPlayerKeys, true);
   }
 
   function bindPanelEvents() {
@@ -396,7 +549,7 @@
     // Jimaku Search Button
     panelEl
       .querySelector('#dsub-jimaku-search-btn')
-      .addEventListener('click', () => handleJimakuSearch());
+      .addEventListener('click', () => handleJimakuSearch({ autoApplyBest: true }));
 
     // Local File Dropzone & Input
     const dropzone = panelEl.querySelector('#dsub-dropzone');
@@ -438,8 +591,8 @@
       const blob = new Blob([srtText], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      const name = state.workInfo.workTitle
-        ? `${state.workInfo.workTitle}_${state.workInfo.partDispNumber || ''}.srt`
+      const name = state.workInfo.cleanTitle
+        ? `${state.workInfo.cleanTitle}_${state.workInfo.partDispNumber || ''}.srt`
         : 'subtitles.srt';
       a.href = url;
       a.download = name;
@@ -462,23 +615,15 @@
     const fontSizeInput = panelEl.querySelector('#dsub-set-fontsize');
     const bottomInput = panelEl.querySelector('#dsub-set-bottom');
     const opacityInput = panelEl.querySelector('#dsub-set-opacity');
-
-    apiKeyInput.value = state.settings.jimakuApiKey || '';
-    aiUrlInput.value = state.settings.aiServerUrl || 'http://127.0.0.1:8765';
-    fontSizeInput.value = state.settings.fontSize;
-    bottomInput.value = state.settings.bottomPosition;
-    opacityInput.value = Math.round(state.settings.bgOpacity * 100);
-
-    panelEl.querySelector('#dsub-val-fontsize').textContent = state.settings.fontSize;
-    panelEl.querySelector('#dsub-val-bottom').textContent = state.settings.bottomPosition;
-    panelEl.querySelector('#dsub-val-opacity').textContent = Math.round(
-      state.settings.bgOpacity * 100
-    );
+    const transparentBtn = panelEl.querySelector('#dsub-transparent-btn');
+    const autoApplyInput = panelEl.querySelector('#dsub-set-autoapply');
+    const formatInput = panelEl.querySelector('#dsub-set-format');
+    const sourceInput = panelEl.querySelector('#dsub-set-source');
 
     fontSizeInput.addEventListener('input', (e) => {
-      const val = parseInt(e.target.value, 10);
-      panelEl.querySelector('#dsub-val-fontsize').textContent = val;
-      saveSettings({ fontSize: val });
+      const val = parseFloat(e.target.value);
+      panelEl.querySelector('#dsub-val-fontsize').textContent = val.toFixed(1);
+      saveSettings({ fontScale: val });
     });
 
     bottomInput.addEventListener('input', (e) => {
@@ -489,14 +634,32 @@
 
     opacityInput.addEventListener('input', (e) => {
       const val = parseInt(e.target.value, 10);
-      panelEl.querySelector('#dsub-val-opacity').textContent = val;
+      panelEl.querySelector('#dsub-val-opacity').textContent =
+        val === 0 ? '0% 透明' : `${val}%`;
       saveSettings({ bgOpacity: val / 100 });
+    });
+
+    transparentBtn.addEventListener('click', () => {
+      opacityInput.value = 0;
+      panelEl.querySelector('#dsub-val-opacity').textContent = '0% 透明';
+      saveSettings({ bgOpacity: 0.0 });
+    });
+
+    autoApplyInput.addEventListener('change', (e) => {
+      saveSettings({ autoSearchApply: e.target.checked });
+    });
+
+    formatInput.addEventListener('change', (e) => {
+      saveSettings({ preferredFormat: e.target.value });
     });
 
     panelEl.querySelector('#dsub-save-settings-btn').addEventListener('click', () => {
       saveSettings({
         jimakuApiKey: apiKeyInput.value.trim(),
         aiServerUrl: aiUrlInput.value.trim() || 'http://127.0.0.1:8765',
+        autoSearchApply: autoApplyInput.checked,
+        preferredFormat: formatInput.value,
+        preferredSource: sourceInput.value.trim() || NEW_DEFAULT_SOURCE,
       });
       const btn = panelEl.querySelector('#dsub-save-settings-btn');
       btn.textContent = '✓ 保存しました';
@@ -546,19 +709,20 @@
   }
 
   // Jimaku.cc Search & Auto-load Flow
-  async function handleJimakuSearch() {
+  async function handleJimakuSearch(options = { autoApplyBest: true }) {
     const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
-    const title = panelEl.querySelector('#dsub-search-title').value.trim();
+    const rawInputTitle = panelEl.querySelector('#dsub-search-title').value.trim();
+    const title = rawInputTitle || state.workInfo.cleanTitle || state.workInfo.workTitle;
     const epVal = panelEl.querySelector('#dsub-search-ep').value.trim();
-    const episode = epVal ? parseInt(epVal, 10) : null;
+    const episode = epVal ? parseInt(epVal, 10) : state.workInfo.episodeNumber;
 
     if (!title) {
       statusEl.textContent = '⚠️ アニメのタイトルを入力してください。';
       return;
     }
 
-    statusEl.textContent = `🔎 「${title}」を Jimaku.cc で検索中...`;
+    statusEl.textContent = `🔎 「${title}」を AniList + Jimaku.cc で検索中...`;
     listEl.style.display = 'none';
     listEl.innerHTML = '';
 
@@ -580,25 +744,35 @@
       return;
     }
 
-    // If single entry, immediately list its episode files
-    if (entries.length === 1) {
-      await loadJimakuEntryFiles(entries[0], episode);
+    // Load files for the top matching entry automatically
+    if (entries.length === 1 || options.autoApplyBest) {
+      await loadJimakuEntryFiles(entries[0], episode, options.autoApplyBest, entries);
       return;
     }
 
+    renderEntryList(entries, episode);
+  }
+
+  function renderEntryList(entries, episode) {
+    const statusEl = panelEl.querySelector('#dsub-jimaku-status');
+    const listEl = panelEl.querySelector('#dsub-jimaku-results');
     statusEl.textContent = `✅ ${entries.length}件の作品が見つかりました。選択してください：`;
     listEl.style.display = 'flex';
+    listEl.innerHTML = '';
     entries.forEach((entry) => {
       const item = document.createElement('div');
       item.className = 'dsub-list-item';
       const jpName = entry.japanese_name || entry.name || entry.english_name || `ID:${entry.id}`;
-      item.innerHTML = `<span>📁 ${jpName}</span><span style="color:#9ca3af;font-size:11px;">選択 ▶</span>`;
-      item.addEventListener('click', () => loadJimakuEntryFiles(entry, episode));
+      const subName = entry.english_name || entry.name || '';
+      const display =
+        subName && subName !== jpName ? `${jpName} <small style="color:#9ca3af">(${subName})</small>` : jpName;
+      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">📁 ${display}</span><span style="color:#9ca3af;font-size:11px;white-space:nowrap;">選択 ▶</span>`;
+      item.addEventListener('click', () => loadJimakuEntryFiles(entry, episode, true, entries));
       listEl.appendChild(item);
     });
   }
 
-  async function loadJimakuEntryFiles(entry, episode) {
+  async function loadJimakuEntryFiles(entry, episode, autoApplyBest = true, allEntries = []) {
     const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
     const jpName = entry.japanese_name || entry.name || '';
@@ -612,6 +786,8 @@
       entryId: entry.id,
       episode,
       apiKey: state.settings.jimakuApiKey,
+      preferredFormat: state.settings.preferredFormat,
+      preferredSource: state.settings.preferredSource,
     });
 
     if (!res.ok) {
@@ -622,29 +798,47 @@
     const files = res.files || [];
     if (files.length === 0) {
       statusEl.textContent = '⚠️ 対象話数の字幕ファイルが見つかりませんでした。';
+      if (allEntries.length > 1) {
+        renderEntryList(allEntries, episode);
+      }
       return;
     }
 
-    // Auto-download if only 1 matching subtitle file
-    if (files.length === 1) {
-      await downloadAndApplyJimakuFile(files[0]);
-      return;
-    }
-
-    statusEl.textContent = `📄 字幕ファイルを選択してください (${files.length}件):`;
+    // Show ranked file list in UI so user can also switch with 1 click if desired
     listEl.style.display = 'flex';
-    files.forEach((file) => {
+    files.forEach((file, idx) => {
       const item = document.createElement('div');
       item.className = 'dsub-list-item';
-      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">${file.name}</span><span style="color:#ff7849;font-size:11px;white-space:nowrap;">読込</span>`;
-      item.addEventListener('click', () => downloadAndApplyJimakuFile(file));
+      if (idx === 0 && autoApplyBest) {
+        item.style.background = 'rgba(235, 85, 40, 0.22)';
+        item.style.borderLeft = '3px solid #ff7849';
+      }
+      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;" title="${file.name}">${
+        idx === 0 ? '★ ' : ''
+      }${file.name}</span><span style="color:#ff7849;font-size:11px;white-space:nowrap;">読込</span>`;
+      item.addEventListener('click', () => {
+        listEl.querySelectorAll('.dsub-list-item').forEach((el) => {
+          el.style.background = '';
+          el.style.borderLeft = '';
+        });
+        item.style.background = 'rgba(235, 85, 40, 0.22)';
+        item.style.borderLeft = '3px solid #ff7849';
+        downloadAndApplyJimakuFile(file);
+      });
       listEl.appendChild(item);
     });
+
+    // Automatically download and apply the #1 highest-ranked file!
+    if (autoApplyBest && files.length > 0) {
+      await downloadAndApplyJimakuFile(files[0]);
+    } else {
+      statusEl.textContent = `📄 字幕ファイルを選択してください (${files.length}件):`;
+    }
   }
 
   async function downloadAndApplyJimakuFile(file) {
     const statusEl = panelEl.querySelector('#dsub-jimaku-status');
-    statusEl.textContent = `⬇️ 「${file.name}」をダウンロード中...`;
+    statusEl.textContent = `⬇️ 「${file.name}」を自動適用中...`;
 
     const res = await sendBgMessage({
       type: 'JIMAKU_DOWNLOAD',
@@ -658,7 +852,7 @@
 
     const cues = window.SubtitleParser.parseSubtitles(res.text, file.name);
     setCues(cues, 'Jimaku');
-    statusEl.textContent = `✅ 「${file.name}」を読み込みました (${cues.length}行)`;
+    statusEl.textContent = `✅ 適用完了: ${file.name} (${cues.length}行)`;
   }
 
   // Real-Time AI Transcription (Local GPU Faster-Whisper Server or WebSpeech)
@@ -713,12 +907,6 @@
       clearInterval(state.ai.timerId);
       state.ai.timerId = null;
     }
-    if (state.ai.processorNode) {
-      try {
-        state.ai.processorNode.disconnect();
-      } catch (_) {}
-      state.ai.processorNode = null;
-    }
     if (state.ai.recognition) {
       try {
         state.ai.recognition.stop();
@@ -737,14 +925,11 @@
   }
 
   async function startVideoAudioCapture(video, statusEl) {
-    // Note: For encrypted EME streams where WebAudio captureStream/createMediaElementSource
-    // may output silence in some browsers, the local server also supports direct PulseAudio/PipeWire
-    // system audio monitor capture (`source: "system"`). We support both seamlessly!
     statusEl.textContent =
       '🟢 ローカルGPU Whisper でリアルタイム文字起こし中... (システム音声モニター同期)';
 
-    const promptTitle = state.workInfo.workTitle
-      ? `アニメ「${state.workInfo.workTitle}」の日本語セリフ。`
+    const promptTitle = state.workInfo.cleanTitle
+      ? `アニメ「${state.workInfo.cleanTitle}」の日本語セリフ。`
       : 'アニメの日本語のセリフ。';
 
     state.ai.timerId = setInterval(async () => {
@@ -757,7 +942,7 @@
       try {
         const res = await sendBgMessage({
           type: 'AI_TRANSCRIBE',
-          audioBase64: null, // Signals server to use its continuous ring-buffer from PipeWire/PulseAudio monitor
+          audioBase64: null,
           language: 'ja',
           prompt: promptTitle,
           serverUrl: state.settings.aiServerUrl,
@@ -821,7 +1006,7 @@
   // Render active subtitle cue for current video time
   function renderCurrentSubtitle() {
     if (!subBoxEl || !state.enabled) return;
-    if (!currentVideo || ! document.body.contains(currentVideo)) {
+    if (!currentVideo || !document.body.contains(currentVideo)) {
       currentVideo = document.querySelector('video');
     }
     if (!currentVideo || state.cues.length === 0) {
@@ -830,7 +1015,6 @@
     }
 
     const t = currentVideo.currentTime - state.offsetSec;
-    // Find all active cues at time t
     const activeTexts = [];
     for (let i = 0; i < state.cues.length; i++) {
       const c = state.cues[i];
@@ -845,14 +1029,14 @@
     }
   }
 
-  // Keyboard shortcuts
+  // Global keyboard shortcuts (when NOT typing in an input)
   function setupShortcuts() {
     window.addEventListener('keydown', (e) => {
-      // Ignore when typing in an input
       if (
         e.target &&
         (e.target.tagName === 'INPUT' ||
           e.target.tagName === 'TEXTAREA' ||
+          e.target.tagName === 'SELECT' ||
           e.target.isContentEditable)
       ) {
         return;
@@ -874,8 +1058,12 @@
     });
   }
 
-  // Keep overlay visible even when video container enters Fullscreen
+  // Keep overlay visible even when video container enters Fullscreen, and recalculate responsive font size on resize
   function setupFullscreenHandler() {
+    window.addEventListener('resize', () => {
+      applyOverlayStyles();
+    });
+
     document.addEventListener('fullscreenchange', () => {
       const fsEl = document.fullscreenElement || document.body;
       if (overlayEl && overlayEl.parentElement !== fsEl) {
@@ -887,6 +1075,8 @@
       if (panelEl && panelEl.parentElement !== fsEl) {
         fsEl.appendChild(panelEl);
       }
+      applyOverlayStyles();
+      setTimeout(applyOverlayStyles, 150);
     });
   }
 
@@ -904,12 +1094,13 @@
   // Main initialization loop
   async function init() {
     ensureUI();
+    setupKeyboardIsolation();
     await loadSettings();
     setupShortcuts();
     setupFullscreenHandler();
     await detectWorkInfo();
 
-    // High-frequency sync loop (every 80ms + video timeupdate)
+    // High-frequency sync loop (every 100ms + video timeupdate)
     setInterval(() => {
       const v = document.querySelector('video');
       if (v && v !== currentVideo) {
