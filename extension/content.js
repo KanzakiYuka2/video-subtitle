@@ -53,6 +53,12 @@
   let fabEl = null;
   let panelEl = null;
   let currentVideo = null;
+  let lyricsEl = null;
+  let lyricsListEl = null;
+  let lyricsCues = null;
+  let lyricsCount = -1;
+  let lyricsIndex = -1;
+  let suppressSubtitleClick = false;
 
   /**
    * Strip d-anime store tags like 【規制解除版】, （吹替版）, etc.
@@ -207,6 +213,23 @@
     subBoxEl.className = 'danime-sub-box';
     overlayEl.appendChild(subBoxEl);
     document.body.appendChild(overlayEl);
+
+    subBoxEl.tabIndex = 0;
+    subBoxEl.setAttribute('role', 'button');
+    subBoxEl.setAttribute('aria-expanded', 'false');
+    subBoxEl.title = 'クリックで字幕一覧・タイミング調整 / ドラッグで移動';
+    subBoxEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!suppressSubtitleClick) toggleLyrics();
+    });
+    subBoxEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleLyrics();
+      }
+    });
+    createLyricsPad();
 
     // Make subtitle overlay vertically draggable
     makeOverlayDraggable(overlayEl, subBoxEl);
@@ -369,14 +392,112 @@
     applyOverlayStyles();
   }
 
+  function createLyricsPad() {
+    lyricsEl = document.createElement('section');
+    lyricsEl.id = 'danime-sub-lyrics';
+    lyricsEl.hidden = true;
+    lyricsEl.setAttribute('aria-label', '字幕タイミング調整');
+    lyricsEl.innerHTML = `
+      <div class="dsub-lyrics-toolbar">
+        <select aria-label="字幕クリック時の動作">
+          <option value="sync">この台詞を今に合わせる</option>
+          <option value="seek">この台詞へ動画を移動</option>
+        </select>
+        <button type="button" data-reset>調整リセット</button>
+        <button type="button" data-close aria-label="字幕一覧を閉じる">×</button>
+      </div>
+      <div class="dsub-lyrics-help">前後にスクロールして台詞をクリック。字幕全体のタイミングを調整します。</div>
+      <div class="dsub-lyrics-list" tabindex="0" aria-label="字幕一覧"></div>`;
+    overlayEl.appendChild(lyricsEl);
+    lyricsListEl = lyricsEl.querySelector('.dsub-lyrics-list');
+    lyricsEl.querySelector('[data-close]').onclick = () => toggleLyrics(false);
+    lyricsEl.querySelector('[data-reset]').onclick = () => {
+      state.offsetSec = 0;
+      updateOffsetUI();
+      renderCurrentSubtitle();
+    };
+    lyricsEl.querySelector('select').onchange = (e) => {
+      lyricsEl.querySelector('.dsub-lyrics-help').textContent = e.target.value === 'sync'
+        ? '前後にスクロールして台詞をクリック。字幕全体のタイミングを調整します。'
+        : '台詞をクリックすると、調整済みの開始時刻へ動画を移動します。';
+    };
+    ['click', 'dblclick', 'mousedown', 'pointerdown', 'wheel', 'keydown', 'keyup'].forEach((type) => {
+      lyricsEl.addEventListener(type, (e) => {
+        e.stopPropagation();
+        if (type === 'keydown' && e.key === 'Escape') toggleLyrics(false);
+      });
+    });
+    lyricsListEl.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-cue]');
+      const video = document.querySelector('video');
+      const cue = row && state.cues[Number(row.dataset.cue)];
+      if (!cue || !video || !Number.isFinite(video.currentTime)) return;
+      currentVideo = video;
+      if (lyricsEl.querySelector('select').value === 'sync') {
+        state.offsetSec = video.currentTime - cue.start;
+        updateOffsetUI();
+      } else {
+        const target = Math.max(0, cue.start + state.offsetSec);
+        video.currentTime = Number.isFinite(video.duration) ? Math.min(target, video.duration) : target;
+      }
+      renderCurrentSubtitle();
+      toggleLyrics(false);
+    });
+  }
+
+  function toggleLyrics(open = lyricsEl.hidden) {
+    if (open && !state.cues.length) return;
+    lyricsEl.hidden = !open;
+    overlayEl.classList.toggle('lyrics-open', open);
+    subBoxEl.setAttribute('aria-expanded', String(open));
+    if (open) {
+      renderCurrentSubtitle();
+      const row = lyricsListEl.children[Math.max(0, lyricsIndex)];
+      if (row) lyricsListEl.scrollTop = row.offsetTop - lyricsListEl.clientHeight / 2 + row.offsetHeight / 2;
+      lyricsListEl.focus();
+    } else {
+      subBoxEl.focus({ preventScroll: true });
+    }
+  }
+
+  function updateLyrics(t) {
+    if (lyricsEl.hidden) return;
+    if (lyricsCues !== state.cues || lyricsCount !== state.cues.length) {
+      lyricsCues = state.cues;
+      lyricsCount = state.cues.length;
+      lyricsListEl.replaceChildren();
+      state.cues.forEach((cue, index) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.dataset.cue = index;
+        const minutes = Math.floor(cue.start / 60);
+        const seconds = (cue.start % 60).toFixed(1).padStart(4, '0');
+        row.textContent = `${minutes}:${seconds}  ${cue.text.replace(/<[^>]*>/g, '')}`;
+        lyricsListEl.appendChild(row);
+      });
+    }
+    lyricsIndex = state.cues.findIndex((cue) => t >= cue.start && t < cue.end);
+    if (lyricsIndex < 0) {
+      lyricsIndex = state.cues.findIndex((cue) => cue.start > t);
+      if (lyricsIndex < 0) lyricsIndex = state.cues.length - 1;
+    }
+    Array.from(lyricsListEl.children).forEach((row, index) => {
+      row.classList.toggle('active', index === lyricsIndex);
+      row.setAttribute('aria-current', String(index === lyricsIndex));
+    });
+  }
+
   function makeOverlayDraggable(overlay, box) {
     let dragging = false;
     let startY = 0;
     let startBottom = 10;
+    let moved = false;
 
     box.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       dragging = true;
+      moved = false;
+      suppressSubtitleClick = false;
       startY = e.clientY;
       startBottom = state.settings.bottomPosition;
       box.style.cursor = 'grabbing';
@@ -386,6 +507,9 @@
     window.addEventListener('mousemove', (e) => {
       if (!dragging) return;
       const deltaY = startY - e.clientY;
+      if (Math.abs(deltaY) < 5 && !moved) return;
+      moved = true;
+      suppressSubtitleClick = true;
       const deltaPct = (deltaY / window.innerHeight) * 100;
       const nextBottom = Math.min(90, Math.max(2, Math.round(startBottom + deltaPct)));
       saveSettings({ bottomPosition: nextBottom });
@@ -470,6 +594,7 @@
 
   function setCues(cues, label) {
     state.cues = cues || [];
+    if (!state.cues.length && lyricsEl && !lyricsEl.hidden) toggleLyrics(false);
     updateBadge(`${label} (${state.cues.length}行)`);
     renderCurrentSubtitle();
   }
@@ -686,6 +811,7 @@
     panelEl.querySelector('#dsub-clear-btn').addEventListener('click', () => {
       state.cues = [];
       subBoxEl.textContent = '';
+      toggleLyrics(false);
       updateBadge('未読込');
     });
   }
@@ -1015,6 +1141,7 @@
     }
 
     const t = currentVideo.currentTime - state.offsetSec;
+    updateLyrics(t);
     const activeTexts = [];
     for (let i = 0; i < state.cues.length; i++) {
       const c = state.cues[i];
@@ -1023,9 +1150,15 @@
       }
     }
 
-    const combined = activeTexts.join('\n');
+    const combined = activeTexts.join('\n') || '字幕一覧 ⋯';
     if (subBoxEl.textContent !== combined) {
       subBoxEl.textContent = combined;
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        subBoxEl.animate([
+          { opacity: 0.3, transform: 'translateY(6px)' },
+          { opacity: 1, transform: 'translateY(0)' },
+        ], { duration: 180, easing: 'ease-out' });
+      }
     }
   }
 

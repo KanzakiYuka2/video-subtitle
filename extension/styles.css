@@ -339,3 +339,70 @@
   color: #ff7849;
   text-decoration: underline;
 }
+
+/* Floating lyric picker stays inside the fullscreen overlay. */
+#danime-sub-lyrics {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(620px, 88vw);
+  max-height: min(420px, 75vh);
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  background: rgba(22, 23, 28, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px #0008;
+  padding: 12px;
+  box-sizing: border-box;
+  color: #fff;
+  font-size: 14px;
+  text-align: left;
+  text-shadow: none;
+  -webkit-text-stroke: 0;
+}
+#danime-sub-lyrics[hidden] { display: none; }
+#danime-sub-lyrics .dsub-lyrics-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+#danime-sub-lyrics button,
+#danime-sub-lyrics select {
+  font: inherit;
+  color: #eee;
+  border: 1px solid #ffffff30;
+  border-radius: 8px;
+  background: #292a31;
+  padding: 8px;
+  cursor: pointer;
+}
+#danime-sub-lyrics select { flex: 1; min-width: 0; }
+#danime-sub-lyrics .dsub-lyrics-help { color: #b6bac5; font-size: 12px; margin: 10px 0; }
+#danime-sub-lyrics .dsub-lyrics-list {
+  position: relative;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+#danime-sub-lyrics .dsub-lyrics-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 4px 0;
+  padding: 12px;
+  border-color: transparent;
+  background: transparent;
+  color: #a9adba;
+  transition: background 0.15s, color 0.15s;
+}
+#danime-sub-lyrics .dsub-lyrics-list button.active {
+  color: #fff;
+  background: #eb552830;
+  border-color: #ff7849;
+}
+#danime-sub-lyrics button:hover { background: #ffffff18; color: #fff; }
+#danime-sub-lyrics :focus-visible,
+#danime-sub-overlay .danime-sub-box:focus-visible { outline: 2px solid #ff7849; outline-offset: 2px; }
+
+#danime-sub-overlay.lyrics-open { bottom: 10% !important; }
