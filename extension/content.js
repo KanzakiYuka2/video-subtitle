@@ -1150,7 +1150,7 @@
       }
     }
 
-    const combined = activeTexts.join('\n') || '字幕一覧 ⋯';
+    const combined = activeTexts.join('\n');
     if (subBoxEl.textContent !== combined) {
       subBoxEl.textContent = combined;
       if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
