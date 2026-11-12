@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "dアニメ字幕アシスタント (Jimaku + AI Whisper + Local Subtitles)",
-  "version": "1.0.0",
-  "description": "dアニメストア等の動画プレイヤーに日本語字幕を追加！Jimaku.cc自動検索、ローカル字幕ファイル(.srt/.ass/.vtt)読込、AIリアルタイム文字起こしに対応。",
+  "name": "字幕アシスタント (dアニメ・Prime Video)",
+  "version": "1.1.0",
+  "description": "dアニメストア・Prime Videoに日本語字幕を追加。Jimakuのアニメ・ドラマ検索、字幕ファイル読込、クリックでタイミング調整。",
   "permissions": [
     "storage"
   ],
@@ -12,7 +12,11 @@
     "https://*.jimaku.cc/*",
     "https://graphql.anilist.co/*",
     "http://127.0.0.1:8765/*",
-    "http://localhost:8765/*"
+    "http://localhost:8765/*",
+    "https://www.amazon.co.jp/gp/video/*",
+    "https://www.amazon.co.jp/Prime-Video/*",
+    "https://www.primevideo.com/*",
+    "https://primevideo.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -33,10 +37,15 @@
   "content_scripts": [
     {
       "matches": [
-        "https://animestore.docomo.ne.jp/*"
+        "https://animestore.docomo.ne.jp/*",
+        "https://www.amazon.co.jp/gp/video/*",
+        "https://www.amazon.co.jp/Prime-Video/*",
+        "https://www.primevideo.com/*",
+        "https://primevideo.com/*"
       ],
       "js": [
         "parser.js",
+        "player.js",
         "content.js"
       ],
       "css": [

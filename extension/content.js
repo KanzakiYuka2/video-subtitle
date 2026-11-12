@@ -12,6 +12,9 @@
   if (window.__DANIME_SUB_ASSISTANT_LOADED__) return;
   window.__DANIME_SUB_ASSISTANT_LOADED__ = true;
 
+  const player = window.SubtitlePlayer;
+  let mediaGeneration = 0;
+
   // State
   const state = {
     enabled: true,
@@ -103,9 +106,12 @@
   }
 
   function sendBgMessage(payload) {
+    const generation = mediaGeneration;
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(payload, (response) => {
-        if (chrome.runtime.lastError) {
+        if (generation !== mediaGeneration) {
+          resolve({ ok: false, error: '動画が切り替わりました。再検索してください。' });
+        } else if (chrome.runtime.lastError) {
           resolve({ ok: false, error: chrome.runtime.lastError.message });
         } else {
           resolve(response || { ok: false, error: 'No response' });
@@ -126,6 +132,25 @@
 
   // Fetch d-anime metadata from official internal REST endpoint or DOM
   async function detectWorkInfo() {
+    if (player.isPrime) {
+      const info = player.primeInfo();
+      const previous = state.workInfo;
+      if (previous.workTitle && info.workTitle &&
+          (previous.workTitle !== info.workTitle ||
+           (previous.episodeNumber != null && info.episodeNumber != null && previous.episodeNumber !== info.episodeNumber))) {
+        resetPrimeEpisode();
+      }
+      // Player controls may temporarily disappear; retain known metadata until navigation.
+      if (info.workTitle) {
+        if (info.workTitle === state.workInfo.workTitle && info.episodeNumber == null) {
+          info.episodeNumber = state.workInfo.episodeNumber;
+          info.partDispNumber = state.workInfo.partDispNumber;
+        }
+        state.workInfo = info;
+        updateMetadataUI();
+      }
+      return state.workInfo;
+    }
     const params = new URLSearchParams(window.location.search);
     const partId = params.get('partId') || '';
 
@@ -255,7 +280,7 @@
     panelEl.tabIndex = -1;
     panelEl.innerHTML = `
       <div class="dsub-header">
-        <div class="dsub-title">🎬 dアニメ字幕アシスタント</div>
+        <div class="dsub-title">🎬 字幕アシスタント</div>
         <button class="dsub-close" id="dsub-close-btn" title="閉じる">×</button>
       </div>
 
@@ -269,17 +294,23 @@
       <div class="dsub-body">
         <!-- Tab 1: Jimaku.cc Search -->
         <div class="dsub-section active" id="dsub-tab-jimaku">
+          <label class="dsub-row">検索対象
+            <select class="dsub-select" id="dsub-search-kind" style="width:180px">
+              <option value="anime">アニメ</option>
+              <option value="drama" ${player.isPrime ? 'selected' : ''}>ドラマ・実写</option>
+            </select>
+          </label>
           <div class="dsub-row">
-            <input type="text" class="dsub-input" id="dsub-search-title" placeholder="アニメタイトル (日本語・英語・略称OK)" />
+            <input type="text" class="dsub-input" id="dsub-search-title" placeholder="作品タイトル (日本語・英語・略称OK)" />
             <input type="number" class="dsub-input" id="dsub-search-ep" placeholder="話数" style="width: 68px;" min="0" />
           </div>
           <div class="dsub-row">
             <button class="dsub-btn dsub-btn-primary" id="dsub-jimaku-search-btn" style="width: 100%;">
-              Jimaku.cc から検索＆最適字幕を適用
+              ${player.isPrime ? 'Jimaku.cc から字幕を検索' : 'Jimaku.cc から検索＆最適字幕を適用'}
             </button>
           </div>
           <div class="dsub-status" id="dsub-jimaku-status">
-            再生中の作品タイトルから自動で日本語字幕(.ass/.srt)を検索・適用します。
+            ${player.isPrime ? 'Prime Video: 作品名・話数を確認して検索してください。検出できない場合は手入力できます。' : '再生中の作品タイトルから自動で日本語字幕(.ass/.srt)を検索・適用します。'}
           </div>
           <div class="dsub-list" id="dsub-jimaku-results" style="display: none;"></div>
         </div>
@@ -324,7 +355,7 @@
           <div class="dsub-row">
             <label class="dsub-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
               <input type="checkbox" id="dsub-set-autoapply" checked />
-              動画を開いた時に自動で字幕を検索・適用する
+              dアニメで動画を開いた時に自動で字幕を検索・適用する
             </label>
           </div>
           <div class="dsub-row">
@@ -429,7 +460,7 @@
     });
     lyricsListEl.addEventListener('click', (e) => {
       const row = e.target.closest('[data-cue]');
-      const video = document.querySelector('video');
+      const video = player.getVideo();
       const cue = row && state.cues[Number(row.dataset.cue)];
       if (!cue || !video || !Number.isFinite(video.currentTime)) return;
       currentVideo = video;
@@ -529,7 +560,7 @@
 
   function computeResponsiveFontSizePx() {
     const scale = Number(state.settings.fontScale) || 3.2;
-    const v = currentVideo || document.querySelector('video');
+    const v = currentVideo || player.getVideo();
     let baseHeight = window.innerHeight;
     if (v) {
       const rect = v.getBoundingClientRect();
@@ -836,6 +867,7 @@
 
   // Jimaku.cc Search & Auto-load Flow
   async function handleJimakuSearch(options = { autoApplyBest: true }) {
+    if (player.isPrime) options = { ...options, autoApplyBest: false };
     const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
     const rawInputTitle = panelEl.querySelector('#dsub-search-title').value.trim();
@@ -844,16 +876,18 @@
     const episode = epVal ? parseInt(epVal, 10) : state.workInfo.episodeNumber;
 
     if (!title) {
-      statusEl.textContent = '⚠️ アニメのタイトルを入力してください。';
+      statusEl.textContent = '⚠️ 作品のタイトルを入力してください。';
       return;
     }
 
-    statusEl.textContent = `🔎 「${title}」を AniList + Jimaku.cc で検索中...`;
+    const kind = panelEl.querySelector('#dsub-search-kind').value;
+    statusEl.textContent = `🔎 「${title}」を ${kind === 'drama' ? 'Jimaku.cc (実写)' : 'AniList + Jimaku.cc'} で検索中...`;
     listEl.style.display = 'none';
     listEl.innerHTML = '';
 
     const res = await sendBgMessage({
       type: 'JIMAKU_SEARCH',
+      kind,
       title,
       apiKey: state.settings.jimakuApiKey,
     });
@@ -893,7 +927,7 @@
       const display =
         subName && subName !== jpName ? `${jpName} <small style="color:#9ca3af">(${subName})</small>` : jpName;
       item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">📁 ${display}</span><span style="color:#9ca3af;font-size:11px;white-space:nowrap;">選択 ▶</span>`;
-      item.addEventListener('click', () => loadJimakuEntryFiles(entry, episode, true, entries));
+      item.addEventListener('click', () => loadJimakuEntryFiles(entry, episode, !player.isPrime, entries));
       listEl.appendChild(item);
     });
   }
@@ -987,7 +1021,7 @@
     const statusEl = panelEl.querySelector('#dsub-ai-status');
     const toggleBtn = panelEl.querySelector('#dsub-ai-toggle-btn');
 
-    const video = document.querySelector('video');
+    const video = player.getVideo();
     if (!video) {
       statusEl.textContent = '❌ 再生中の動画(<video>)が見つかりません。';
       return;
@@ -1132,8 +1166,8 @@
   // Render active subtitle cue for current video time
   function renderCurrentSubtitle() {
     if (!subBoxEl || !state.enabled) return;
-    if (!currentVideo || !document.body.contains(currentVideo)) {
-      currentVideo = document.querySelector('video');
+    if (player.isPrime || !currentVideo || !document.body.contains(currentVideo)) {
+      currentVideo = player.getVideo();
     }
     if (!currentVideo || state.cues.length === 0) {
       if (!state.ai.active) subBoxEl.textContent = '';
@@ -1224,6 +1258,21 @@
     }
   });
 
+  function resetPrimeEpisode() {
+    mediaGeneration++;
+    stopAiTranscription();
+    setCues([], '未読込');
+    state.offsetSec = 0;
+    updateOffsetUI();
+    state.workInfo = { partId: '', workTitle: '', cleanTitle: '', partDispNumber: '', partTitle: '', episodeNumber: null };
+    for (const id of ['#dsub-search-title', '#dsub-search-ep']) {
+      const input = panelEl.querySelector(id);
+      input.value = '';
+      delete input.dataset.userEdited;
+    }
+    panelEl.querySelector('#dsub-jimaku-results').replaceChildren();
+  }
+
   // Main initialization loop
   async function init() {
     ensureUI();
@@ -1235,7 +1284,7 @@
 
     // High-frequency sync loop (every 100ms + video timeupdate)
     setInterval(() => {
-      const v = document.querySelector('video');
+      const v = player.getVideo();
       if (v && v !== currentVideo) {
         currentVideo = v;
         v.addEventListener('timeupdate', renderCurrentSubtitle);
@@ -1250,10 +1299,13 @@
     setInterval(() => {
       if (window.location.href !== lastHref) {
         lastHref = window.location.href;
+        if (player.isPrime) resetPrimeEpisode();
         const titleInput = panelEl?.querySelector('#dsub-search-title');
         const epInput = panelEl?.querySelector('#dsub-search-ep');
         if (titleInput) delete titleInput.dataset.userEdited;
         if (epInput) delete epInput.dataset.userEdited;
+        detectWorkInfo();
+      } else if (player.isPrime) {
         detectWorkInfo();
       }
     }, 1000);

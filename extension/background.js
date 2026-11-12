@@ -176,7 +176,7 @@ function scoreSeasonMatch(titlesArray, targetSeason) {
  * 2. Search AniList by baseTitle AND cleanTitle so we get all seasons (S1, S2, etc.), then sort by season match!
  * 3. Search Jimaku by `anilist_id` AND by `query` (cleanTitle + baseTitle), then rank entries by season match!
  */
-async function jimakuSearch(rawTitle, apiKey) {
+async function jimakuSearch(rawTitle, apiKey, kind = 'anime') {
   if (!apiKey) {
     throw new Error('Jimaku APIキーが設定されていません。パネルの「⚙ 設定」から登録してください。');
   }
@@ -184,6 +184,14 @@ async function jimakuSearch(rawTitle, apiKey) {
     Authorization: apiKey.trim(),
     Accept: 'application/json',
   };
+
+  if (kind === 'drama') {
+    const query = new URLSearchParams({ query: rawTitle.trim(), anime: 'false' });
+    const response = await fetch(`${JIMAKU_BASE}/entries/search?${query}`, { headers });
+    if (!response.ok) throw new Error(`Jimaku検索エラー (${response.status})`);
+    const entries = await response.json();
+    return Array.isArray(entries) ? entries : [];
+  }
 
   const cleanTitle = normalizeAnimeTitle(rawTitle);
   const targetSeason = detectSeasonNumber(cleanTitle);
@@ -531,7 +539,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       switch (message.type) {
         case 'JIMAKU_SEARCH': {
           const apiKey = message.apiKey || settings.jimakuApiKey;
-          const entries = await jimakuSearch(message.title, apiKey);
+          const entries = await jimakuSearch(message.title, apiKey, message.kind);
           sendResponse({ ok: true, entries });
           break;
         }
