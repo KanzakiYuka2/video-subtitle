@@ -217,6 +217,34 @@
   box-sizing: border-box;
 }
 
+/*
+ * Content-script controls live in the host page rather than a shadow root.
+ * Prime Video can therefore leak its input rendering rules into this panel.
+ * In particular, an inherited/overridden -webkit-text-fill-color makes the
+ * value disappear even though `color` is still white in our rule above.
+ */
+#danime-sub-panel input.dsub-input,
+#danime-sub-panel select.dsub-select {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  caret-color: #fff !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 transparent !important;
+}
+
+#danime-sub-panel input.dsub-input::placeholder {
+  color: #9ca3af !important;
+  -webkit-text-fill-color: #9ca3af !important;
+  opacity: 1 !important;
+}
+
+#danime-sub-panel select.dsub-select option {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  background: #18191e !important;
+}
+
 .dsub-input:focus,
 .dsub-select:focus {
   outline: none;

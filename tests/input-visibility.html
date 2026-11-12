@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Input visibility regression test</title>
+<style>
+  /* Simulate host-page rules leaking into content-script controls. */
+  input, select {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+    opacity: 0.01 !important;
+    text-shadow: 0 0 transparent !important;
+  }
+</style>
+<link rel="stylesheet" href="../extension/styles.css">
+<div id="danime-sub-panel">
+  <input class="dsub-input" value="Visible title">
+  <select class="dsub-select"><option>Visible option</option></select>
+</div>
+<pre id="result">RUNNING</pre>
+<script>
+  const inputStyle = getComputedStyle(document.querySelector('.dsub-input'));
+  const selectStyle = getComputedStyle(document.querySelector('.dsub-select'));
+  const pass = inputStyle.color === 'rgb(255, 255, 255)'
+    && inputStyle.webkitTextFillColor === 'rgb(255, 255, 255)'
+    && inputStyle.opacity === '1'
+    && selectStyle.webkitTextFillColor === 'rgb(255, 255, 255)';
+  document.querySelector('#result').textContent = pass
+    ? 'PASS: form values remain visible'
+    : `FAIL: input=${inputStyle.color}/${inputStyle.webkitTextFillColor}/${inputStyle.opacity}; select=${selectStyle.webkitTextFillColor}`;
+</script>

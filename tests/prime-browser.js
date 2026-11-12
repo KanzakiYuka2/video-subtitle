@@ -12,6 +12,12 @@
     Object.defineProperty(video, 'duration', { value: 100 });
     a.ensureUI();
     await a.detectWorkInfo();
+    const titleInput = document.querySelector('#dsub-search-title');
+    titleInput.value = 'Visible title';
+    const titleStyle = getComputedStyle(titleInput);
+    assert(titleStyle.color === 'rgb(255, 255, 255)', 'input value color survives host CSS');
+    assert(titleStyle.webkitTextFillColor === 'rgb(255, 255, 255)', 'input text fill survives host CSS');
+    assert(titleStyle.opacity === '1', 'input opacity survives host CSS');
     assert(a.state.workInfo.episodeNumber === 4, 'Prime metadata used');
     assert(document.querySelector('#dsub-search-kind').value === 'drama', 'Prime defaults to drama');
     a.setCues([{start:10,end:12,text:'First'},{start:20,end:22,text:'Second'}], 'test');
