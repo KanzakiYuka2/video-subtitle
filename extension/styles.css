@@ -205,8 +205,8 @@
   font-weight: 500;
 }
 
-.dsub-input,
-.dsub-select {
+#danime-sub-panel .dsub-input,
+#danime-sub-panel .dsub-select {
   width: 100%;
   padding: 7px 10px;
   border-radius: 6px;
@@ -231,6 +231,7 @@
   opacity: 1 !important;
   text-shadow: none !important;
   -webkit-text-stroke: 0 transparent !important;
+  background-color: #17181d !important;
 }
 
 #danime-sub-panel input.dsub-input::placeholder {
@@ -245,8 +246,12 @@
   background: #18191e !important;
 }
 
-.dsub-input:focus,
-.dsub-select:focus {
+#danime-sub-panel input.dsub-input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #17181d inset !important;
+}
+
+#danime-sub-panel .dsub-input:focus,
+#danime-sub-panel .dsub-select:focus {
   outline: none;
   border-color: #ff7849;
 }

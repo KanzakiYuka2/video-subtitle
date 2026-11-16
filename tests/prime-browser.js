@@ -11,6 +11,23 @@
     Object.defineProperty(video, 'currentTime', { value: 20, writable: true });
     Object.defineProperty(video, 'duration', { value: 100 });
     a.ensureUI();
+    // Model host-page CSS loaded after the extension, including Chrome's text fill.
+    const hostStyle = document.createElement('style');
+    hostStyle.textContent = `input, input:focus { color: transparent !important; -webkit-text-fill-color: transparent !important; opacity: 0.2; background: white; }`;
+    document.head.appendChild(hostStyle);
+    document.querySelector('#danime-sub-panel').classList.add('open');
+    const search = document.querySelector('#dsub-search-title');
+    search.value = '仮面ライダー Test';
+    search.focus();
+    for (const input of document.querySelectorAll('#danime-sub-panel .dsub-input')) {
+      const style = getComputedStyle(input);
+      assert(style.color === 'rgb(255, 255, 255)', 'input text resists host color');
+      assert(style.webkitTextFillColor === 'rgb(255, 255, 255)', 'input text resists host text fill');
+      assert(style.opacity === '1', 'input remains opaque');
+    }
+    search.blur();
+    assert(getComputedStyle(search).webkitTextFillColor === 'rgb(255, 255, 255)', 'blurred text stays visible');
+    hostStyle.remove();
     await a.detectWorkInfo();
     const titleInput = document.querySelector('#dsub-search-title');
     titleInput.value = 'Visible title';
@@ -41,6 +58,6 @@
     };
     const result = await jimakuSearch('Drama', 'test-key', 'drama');
     assert(result.length === 1 && calls.length === 1 && calls[0].includes('anime=false'), 'drama search skips AniList');
-    document.querySelector('#result').textContent = 'PASS: Prime player, metadata, sync, seek, gaps, episode reset, drama search';
+    document.querySelector('#result').textContent = 'PASS: input visibility, Prime player, metadata, sync, seek, gaps, episode reset, drama search';
   } catch (error) { document.querySelector('#result').textContent = 'FAIL: ' + error.stack; }
 })();
