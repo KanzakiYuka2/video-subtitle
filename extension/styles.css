@@ -439,3 +439,32 @@
 #danime-sub-overlay .danime-sub-box:focus-visible { outline: 2px solid #ff7849; outline-offset: 2px; }
 
 #danime-sub-overlay.lyrics-open { bottom: 10% !important; }
+
+/* Keep Prime's right-side and bottom player controls accessible, including
+   after these elements are moved into the fullscreen container. */
+#danime-sub-fab.dsub-prime {
+  top: 72px;
+  left: 18px;
+  right: auto;
+  max-width: calc(100vw - 100px);
+}
+
+#danime-sub-fab.dsub-prime .danime-sub-badge {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#danime-sub-panel.dsub-prime {
+  top: 114px;
+  left: 18px;
+  right: auto;
+  width: min(370px, calc(100vw - 100px));
+  max-height: max(0px, calc(100vh - 210px));
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+#danime-sub-panel.dsub-prime > * {
+  flex-shrink: 0;
+}

@@ -16,6 +16,11 @@
     hostStyle.textContent = `input, input:focus { color: transparent !important; -webkit-text-fill-color: transparent !important; opacity: 0.2; background: white; }`;
     document.head.appendChild(hostStyle);
     document.querySelector('#danime-sub-panel').classList.add('open');
+    const panel = document.querySelector('#danime-sub-panel');
+    const bounds = panel.getBoundingClientRect();
+    assert(bounds.left === 18 && bounds.right <= innerWidth - 80, 'Prime panel leaves right controls accessible');
+    assert(bounds.bottom <= innerHeight - 96, 'Prime panel leaves bottom controls accessible');
+    assert(getComputedStyle(document.querySelector('#danime-sub-fab')).left === '18px', 'Prime button is on left');
     const search = document.querySelector('#dsub-search-title');
     search.value = '仮面ライダー Test';
     search.focus();

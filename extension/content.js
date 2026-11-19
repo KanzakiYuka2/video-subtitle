@@ -262,6 +262,7 @@
     // 2. Floating Action Button (FAB)
     fabEl = document.createElement('button');
     fabEl.id = 'danime-sub-fab';
+    fabEl.classList.toggle('dsub-prime', player.isPrime);
     fabEl.title = '字幕アシスタントを開く (Alt+S: 字幕ON/OFF)';
     fabEl.innerHTML = `<span>💬 字幕</span><span class="danime-sub-badge" id="danime-sub-fab-badge">未読込</span>`;
     fabEl.addEventListener('click', () => {
@@ -276,6 +277,7 @@
     // 3. Control Panel
     panelEl = document.createElement('div');
     panelEl.id = 'danime-sub-panel';
+    panelEl.classList.toggle('dsub-prime', player.isPrime);
     // Make panel focusable so clicking anywhere inside keeps focus inside the panel
     panelEl.tabIndex = -1;
     panelEl.innerHTML = `
