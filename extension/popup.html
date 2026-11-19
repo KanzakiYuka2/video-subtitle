@@ -5,7 +5,7 @@
   <title>dアニメ字幕アシスタント</title>
   <style>
     body {
-      width: 310px;
+      width: 320px;
       margin: 0;
       padding: 14px 16px;
       background: #18191e;
@@ -30,7 +30,7 @@
       color: #9ca3af;
       margin-bottom: 4px;
     }
-    input {
+    input, select {
       width: 100%;
       padding: 7px 9px;
       border-radius: 6px;
@@ -74,7 +74,19 @@
   <h2>🎬 dアニメ字幕アシスタント</h2>
   <div class="field">
     <label>Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank">無料取得</a>)</label>
-    <input type="password" id="apiKey" placeholder="APIキーを入力..." />
+    <input type="text" id="apiKey" autocomplete="off" spellcheck="false" style="-webkit-text-security: disc;" placeholder="APIキーを入力..." />
+  </div>
+  <div class="field">
+    <label>ソース優先モード</label>
+    <select id="sourcePriorityMode">
+      <option value="platinum_other">Platinumの次にOtherを優先 (推奨)</option>
+      <option value="standard_tiers">標準ティア順 (Platinum→Gold→Silver→Bronze)</option>
+      <option value="custom">カスタム (再生パネル側で設定)</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Netflix標準オフセット (秒 / 作品別未設定時に自動適用)</label>
+    <input type="number" id="netflixDefaultOffsetSec" step="0.5" value="0.0" />
   </div>
   <div class="field">
     <label>ローカルAI WhisperサーバーURL</label>
@@ -84,6 +96,7 @@
   <button id="togglePanelBtn" class="secondary">再生画面の字幕パネルを開閉</button>
   <div class="hint">
     ・再生画面右上の「💬 字幕」ボタンから自動検索・ファイル読込・AI文字起こしが使えます。<br/>
+    ・オフセット調整値は作品・ソースごとに自動記憶されます。<br/>
     ・ショートカット: <b>Alt+S</b> (表示切替), <b>[ / ]</b> (0.5秒ズレ補正)
   </div>
   <script src="popup.js"></script>
