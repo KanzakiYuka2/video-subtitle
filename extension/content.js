@@ -69,7 +69,7 @@
   function cleanWorkTitle(rawTitle) {
     if (!rawTitle) return '';
     return rawTitle
-      .replace(/【.*?】|\[.*?\]|（.*?版.*?）|\(.*?版.*?\)|＜.*?版.*?＞/g, ' ')
+      .replace(/【[^】]*(?:版|放送|配信|限定|特典|吹替|字幕)[^】]*】|\[[^\]]*(?:版|放送|配信|限定|特典|吹替|字幕)[^\]]*\]|（.*?版.*?）|\(.*?版.*?\)|＜.*?版.*?＞/g, ' ')
       .replace(/（吹替）|（字幕）|（テレビ放送版）|（オンエア版）|（完全版）/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -891,6 +891,7 @@
       type: 'JIMAKU_SEARCH',
       kind,
       title,
+      episode,
       apiKey: state.settings.jimakuApiKey,
     });
 
@@ -900,22 +901,81 @@
     }
 
     const entries = res.entries || [];
+    const resolvedMeta = res.resolvedMeta || {};
     if (entries.length === 0) {
       statusEl.innerHTML =
         '⚠️ Jimaku.cc に該当作品の字幕が見つかりませんでした。<br/>「🎙️ AIリアルタイム」タブからAI自動字幕をお試しください！';
       return;
     }
 
-    // Load files for the top matching entry automatically
-    if (entries.length === 1 || options.autoApplyBest) {
-      await loadJimakuEntryFiles(entries[0], episode, options.autoApplyBest, entries);
+    if (options.autoApplyBest) {
+      await autoPickBestAcrossEntries(entries, episode, resolvedMeta);
+    } else if (entries.length === 1) {
+      await loadJimakuEntryFiles(entries[0], episode, false, entries, resolvedMeta);
+    } else {
+      renderEntryList(entries, episode, resolvedMeta);
+    }
+  }
+
+  async function autoPickBestAcrossEntries(entries, episode, resolvedMeta) {
+    const statusEl = panelEl.querySelector('#dsub-jimaku-status');
+    const listEl = panelEl.querySelector('#dsub-jimaku-results');
+    const maxToTry = Math.min(entries.length, 4);
+    let firstNonEmpty = null;
+
+    for (let i = 0; i < maxToTry; i++) {
+      const entry = entries[i];
+      const jpName = entry.japanese_name || entry.name || '';
+      statusEl.textContent = `📂 「${jpName}」の字幕ファイルを確認中...`;
+
+      const res = await sendBgMessage({
+        type: 'JIMAKU_FILES',
+        entryId: entry.id,
+        episode,
+        apiKey: state.settings.jimakuApiKey,
+        preferredFormat: state.settings.preferredFormat,
+        preferredSource: state.settings.preferredSource,
+        extraMeta: {
+          ...resolvedMeta,
+          entryAnilistId: entry.anilist_id || null,
+          entryName: jpName,
+          partTitle: state.workInfo.partTitle || '',
+          cleanWorkTitle: state.workInfo.cleanTitle || '',
+        },
+      });
+
+      if (!res.ok) continue;
+      const files = res.files || [];
+      if (files.length === 0) continue;
+
+      if (!firstNonEmpty) {
+        firstNonEmpty = { entry, files };
+      }
+
+      if (files[0]._exactEpisode !== false || episode == null) {
+        renderRankedFilesUI(files, entry, episode, resolvedMeta, entries);
+        await downloadAndApplyJimakuFile(files[0]);
+        return;
+      }
+    }
+
+    // No exact episode match found across candidates
+    if (firstNonEmpty && entries.length === 1) {
+      renderRankedFilesUI(firstNonEmpty.files, firstNonEmpty.entry, episode, resolvedMeta, entries);
+      await downloadAndApplyJimakuFile(firstNonEmpty.files[0]);
       return;
     }
 
-    renderEntryList(entries, episode);
+    if (entries.length > 1) {
+      renderEntryList(entries, episode, resolvedMeta);
+      statusEl.textContent = `⚠️ 第${episode ?? '?'}話に完全一致するファイルが自動特定できませんでした。フォルダを選択してください：`;
+    } else {
+      listEl.style.display = 'none';
+      statusEl.textContent = '⚠️ 対象話数の字幕ファイルが見つかりませんでした。';
+    }
   }
 
-  function renderEntryList(entries, episode) {
+  function renderEntryList(entries, episode, resolvedMeta = {}) {
     const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
     statusEl.textContent = `✅ ${entries.length}件の作品が見つかりました。選択してください：`;
@@ -929,12 +989,57 @@
       const display =
         subName && subName !== jpName ? `${jpName} <small style="color:#9ca3af">(${subName})</small>` : jpName;
       item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">📁 ${display}</span><span style="color:#9ca3af;font-size:11px;white-space:nowrap;">選択 ▶</span>`;
-      item.addEventListener('click', () => loadJimakuEntryFiles(entry, episode, !player.isPrime, entries));
+      item.addEventListener('click', () => {
+        loadJimakuEntryFiles(entry, episode, !player.isPrime, entries, resolvedMeta);
+      });
       listEl.appendChild(item);
     });
   }
 
-  async function loadJimakuEntryFiles(entry, episode, autoApplyBest = true, allEntries = []) {
+  function renderRankedFilesUI(files, entry, episode, resolvedMeta, allEntries = []) {
+    const listEl = panelEl.querySelector('#dsub-jimaku-results');
+    listEl.innerHTML = '';
+    listEl.style.display = 'flex';
+
+    if (allEntries.length > 1) {
+      const switchBar = document.createElement('div');
+      switchBar.className = 'dsub-list-item';
+      switchBar.style.color = '#9ca3af';
+      switchBar.style.fontSize = '11px';
+      switchBar.innerHTML = `<span>📁 ${entry.japanese_name || entry.name}</span><span style="color:#ff7849;">別候補(${allEntries.length})へ ↩</span>`;
+      switchBar.addEventListener('click', () => renderEntryList(allEntries, episode, resolvedMeta));
+      listEl.appendChild(switchBar);
+    }
+
+    files.forEach((file, idx) => {
+      const item = document.createElement('div');
+      item.className = 'dsub-list-item';
+      if (idx === 0) {
+        item.style.background = 'rgba(235, 85, 40, 0.22)';
+        item.style.borderLeft = '3px solid #ff7849';
+      }
+      const badgeTag = file._partTitleMatched ? '🎯 ' : idx === 0 ? '★ ' : '';
+      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;" title="${file.name}">${badgeTag}${file.name}</span><span style="color:#ff7849;font-size:11px;white-space:nowrap;">読込</span>`;
+      item.addEventListener('click', () => {
+        listEl.querySelectorAll('.dsub-list-item').forEach((el) => {
+          el.style.background = '';
+          el.style.borderLeft = '';
+        });
+        item.style.background = 'rgba(235, 85, 40, 0.22)';
+        item.style.borderLeft = '3px solid #ff7849';
+        downloadAndApplyJimakuFile(file);
+      });
+      listEl.appendChild(item);
+    });
+  }
+
+  async function loadJimakuEntryFiles(
+    entry,
+    episode,
+    autoApplyBest = true,
+    allEntries = [],
+    resolvedMeta = {}
+  ) {
     const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
     const jpName = entry.japanese_name || entry.name || '';
@@ -950,6 +1055,13 @@
       apiKey: state.settings.jimakuApiKey,
       preferredFormat: state.settings.preferredFormat,
       preferredSource: state.settings.preferredSource,
+      extraMeta: {
+        ...resolvedMeta,
+        entryAnilistId: entry.anilist_id || null,
+        entryName: jpName,
+        partTitle: state.workInfo.partTitle || '',
+        cleanWorkTitle: state.workInfo.cleanTitle || '',
+      },
     });
 
     if (!res.ok) {
@@ -961,36 +1073,13 @@
     if (files.length === 0) {
       statusEl.textContent = '⚠️ 対象話数の字幕ファイルが見つかりませんでした。';
       if (allEntries.length > 1) {
-        renderEntryList(allEntries, episode);
+        renderEntryList(allEntries, episode, resolvedMeta);
       }
       return;
     }
 
-    // Show ranked file list in UI so user can also switch with 1 click if desired
-    listEl.style.display = 'flex';
-    files.forEach((file, idx) => {
-      const item = document.createElement('div');
-      item.className = 'dsub-list-item';
-      if (idx === 0 && autoApplyBest) {
-        item.style.background = 'rgba(235, 85, 40, 0.22)';
-        item.style.borderLeft = '3px solid #ff7849';
-      }
-      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;" title="${file.name}">${
-        idx === 0 ? '★ ' : ''
-      }${file.name}</span><span style="color:#ff7849;font-size:11px;white-space:nowrap;">読込</span>`;
-      item.addEventListener('click', () => {
-        listEl.querySelectorAll('.dsub-list-item').forEach((el) => {
-          el.style.background = '';
-          el.style.borderLeft = '';
-        });
-        item.style.background = 'rgba(235, 85, 40, 0.22)';
-        item.style.borderLeft = '3px solid #ff7849';
-        downloadAndApplyJimakuFile(file);
-      });
-      listEl.appendChild(item);
-    });
+    renderRankedFilesUI(files, entry, episode, resolvedMeta, allEntries);
 
-    // Automatically download and apply the #1 highest-ranked file!
     if (autoApplyBest && files.length > 0) {
       await downloadAndApplyJimakuFile(files[0]);
     } else {

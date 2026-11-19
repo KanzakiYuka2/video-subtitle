@@ -1,5 +1,10 @@
 """Generate an isolated browser fixture. Open its printed path in Chrome."""
 from pathlib import Path
+import argparse
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--search", action="store_true", help="Build the offline search regression fixture")
+args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
 content = (root / 'extension/content.js').read_text()
 content = content[:content.rindex("  if (document.readyState === 'loading')")] + '''
@@ -22,6 +27,12 @@ input, select {
 '''
 html = '<!doctype html><meta charset="utf-8"><style>' + host_styles + styles + '</style><body><video style="display:none"></video><video id="main-video" style="width:800px;height:450px"></video><div class="atvwebplayersdk-title-text">Test Drama</div><div class="atvwebplayersdk-subtitle-text"></div><pre id="result">RUNNING</pre>'
 html += ''.join('<script>' + script + '</script>' for script in scripts)
-out = Path('/tmp/prime-subtitle-test.html')
+if args.search:
+    scripts = ["window.chrome = {runtime:{onMessage:{addListener(){}}}};",
+               (root / 'extension/background.js').read_text(),
+               (root / 'tests/search-browser.js').read_text()]
+    html = '<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</pre>'
+    html += ''.join('<script>' + script + '</script>' for script in scripts)
+out = Path('/tmp/subtitle-search-test.html' if args.search else '/tmp/prime-subtitle-test.html')
 out.write_text(html)
 print(out)

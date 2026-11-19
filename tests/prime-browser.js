@@ -62,7 +62,7 @@
       return {ok:true, json:async()=>[{id:1,name:'Drama'}]};
     };
     const result = await jimakuSearch('Drama', 'test-key', 'drama');
-    assert(result.length === 1 && calls.length === 1 && calls[0].includes('anime=false'), 'drama search skips AniList');
+    assert(result.entries.length === 1 && calls.length === 1 && calls[0].includes('anime=false'), 'drama search skips AniList');
     document.querySelector('#result').textContent = 'PASS: input visibility, Prime player, metadata, sync, seek, gaps, episode reset, drama search';
   } catch (error) { document.querySelector('#result').textContent = 'FAIL: ' + error.stack; }
 })();
