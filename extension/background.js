@@ -51,7 +51,7 @@ async function getSettings() {
         preferredFormat: 'ass,srt,vtt',
         sourcePriorityMode: 'platinum_other',
         preferredSource: DEFAULT_PREFERRED_SOURCE,
-        netflixDefaultOffsetSec: 0.0,
+        netflixDefaultOffsetSec: -1.0,
       },
       (items) => resolve(items)
     );

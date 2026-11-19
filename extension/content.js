@@ -55,7 +55,7 @@
       preferredFormat: 'ass,srt,vtt',
       sourcePriorityMode: 'platinum_other',
       preferredSource: NEW_DEFAULT_SOURCE,
-      netflixDefaultOffsetSec: 0.0,
+      netflixDefaultOffsetSec: -1.0,
       workOffsets: {}, // { [workKey]: number, [`${workKey}::${sourceCat}`]: number }
       workEntries: {}, // { [`${workKey}::s${season}`]: entryId }
     },
@@ -128,22 +128,35 @@
   // Load saved settings
   function loadSettings() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(state.settings, (items) => {
-        if (!items.preferredSource || LEGACY_DEFAULT_SOURCES.has(items.preferredSource)) {
-          items.preferredSource = NEW_DEFAULT_SOURCE;
-          items.sourcePriorityMode = 'platinum_other';
-          chrome.storage.local.set({
-            preferredSource: NEW_DEFAULT_SOURCE,
-            sourcePriorityMode: 'platinum_other',
-          });
+      chrome.storage.local.get(
+        { ...state.settings, netflixOffsetMigratedV1: false },
+        (items) => {
+          if (!items.preferredSource || LEGACY_DEFAULT_SOURCES.has(items.preferredSource)) {
+            items.preferredSource = NEW_DEFAULT_SOURCE;
+            items.sourcePriorityMode = 'platinum_other';
+            chrome.storage.local.set({
+              preferredSource: NEW_DEFAULT_SOURCE,
+              sourcePriorityMode: 'platinum_other',
+            });
+          }
+          if (!items.netflixOffsetMigratedV1) {
+            if (Number(items.netflixDefaultOffsetSec) === 0) {
+              items.netflixDefaultOffsetSec = -1.0;
+            }
+            chrome.storage.local.set({
+              netflixDefaultOffsetSec: items.netflixDefaultOffsetSec,
+              netflixOffsetMigratedV1: true,
+            });
+          }
+          delete items.netflixOffsetMigratedV1;
+          items.workOffsets = items.workOffsets && typeof items.workOffsets === 'object' ? items.workOffsets : {};
+          items.workEntries = items.workEntries && typeof items.workEntries === 'object' ? items.workEntries : {};
+          Object.assign(state.settings, items);
+          syncSettingsToUI();
+          applyOverlayStyles();
+          resolve(state.settings);
         }
-        items.workOffsets = items.workOffsets && typeof items.workOffsets === 'object' ? items.workOffsets : {};
-        items.workEntries = items.workEntries && typeof items.workEntries === 'object' ? items.workEntries : {};
-        Object.assign(state.settings, items);
-        syncSettingsToUI();
-        applyOverlayStyles();
-        resolve(state.settings);
-      });
+      );
     });
   }
 
@@ -429,7 +442,7 @@
           </div>
           <div class="dsub-row">
             <span class="dsub-label" title="作品別の調整が未保存のとき、Netflix字幕に自動で掛ける基準オフセット">Netflix標準オフセット (秒)</span>
-            <input type="number" class="dsub-input" id="dsub-set-nfoffset" step="0.5" value="0.0" style="width: 82px;" />
+            <input type="number" class="dsub-input" id="dsub-set-nfoffset" step="0.5" value="-1.0" style="width: 82px;" />
           </div>
           <div>
             <div class="dsub-label" style="margin-bottom: 4px;">Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank" rel="noopener" style="color:#ff7849;">無料取得</a>)</div>
@@ -572,7 +585,7 @@
     if (formatInput) formatInput.value = state.settings.preferredFormat || 'ass,srt,vtt';
     if (sourceModeInput) sourceModeInput.value = state.settings.sourcePriorityMode || 'platinum_other';
     if (sourceInput) sourceInput.value = state.settings.preferredSource || NEW_DEFAULT_SOURCE;
-    if (nfOffsetInput) nfOffsetInput.value = Number(state.settings.netflixDefaultOffsetSec ?? 0).toFixed(1);
+    if (nfOffsetInput) nfOffsetInput.value = Number(state.settings.netflixDefaultOffsetSec ?? -1.0).toFixed(1);
 
     const fsLabel = panelEl.querySelector('#dsub-val-fontsize');
     const btLabel = panelEl.querySelector('#dsub-val-bottom');
@@ -792,7 +805,7 @@
         preferredFormat: formatInput.value,
         sourcePriorityMode: mode,
         preferredSource: srcStr,
-        netflixDefaultOffsetSec: Number.isFinite(nfOff) ? Math.round(nfOff * 10) / 10 : 0.0,
+        netflixDefaultOffsetSec: Number.isFinite(nfOff) ? Math.round(nfOff * 10) / 10 : -1.0,
       });
       const btn = panelEl.querySelector('#dsub-save-settings-btn');
       btn.textContent = '✓ 保存しました';
