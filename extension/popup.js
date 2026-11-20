@@ -1,15 +1,18 @@
 document.addEventListener('DOMContentLoaded', () => {
   const apiKeyEl = document.getElementById('apiKey');
   const aiServerEl = document.getElementById('aiServerUrl');
+  const nfOffsetEl = document.getElementById('netflixDefaultOffsetSec');
   const saveBtn = document.getElementById('saveBtn');
   const toggleBtn = document.getElementById('togglePanelBtn');
 
   chrome.storage.local.get(
     {
       jimakuApiKey: '',
+      netflixDefaultOffsetSec: -1.0,
       aiServerUrl: 'http://127.0.0.1:8765',
     },
     (items) => {
+      nfOffsetEl.value = Number(items.netflixDefaultOffsetSec ?? -1.0).toFixed(1);
       apiKeyEl.value = items.jimakuApiKey || '';
       aiServerEl.value = items.aiServerUrl || 'http://127.0.0.1:8765';
     }
@@ -19,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.set(
       {
         jimakuApiKey: apiKeyEl.value.trim(),
+        netflixDefaultOffsetSec: Number.isFinite(nfOffsetEl.valueAsNumber) ? nfOffsetEl.valueAsNumber : -1.0,
         aiServerUrl: aiServerEl.value.trim() || 'http://127.0.0.1:8765',
       },
       () => {

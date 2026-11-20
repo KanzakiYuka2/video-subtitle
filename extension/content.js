@@ -39,6 +39,7 @@
       textColor: '#ffffff',
       autoSearchApply: true,
       preferredFormat: 'ass,srt,vtt',
+      netflixDefaultOffsetSec: -1.0,
       preferredSource: 'ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,WebRip,BD',
     },
     ai: {
@@ -370,6 +371,8 @@
           <div>
             <div class="dsub-label" style="margin-bottom: 4px;">優先ソース順 (Platinum: ABEMA/DMM/U-NEXT/Amazon → Gold: Netflix → Silver: NanokoRaws → Bronze: shincaps)</div>
             <input type="text" class="dsub-input" id="dsub-set-source" placeholder="ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,WebRip,BD" />
+            <label class="dsub-label" for="dsub-set-nfoffset">Netflix標準オフセット (秒)</label>
+            <input type="number" class="dsub-input" id="dsub-set-nfoffset" step="0.1" value="-1.0" />
           </div>
           <div>
             <div class="dsub-label" style="margin-bottom: 4px;">Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank" rel="noopener" style="color:#ff7849;">無料取得</a>)</div>
@@ -598,6 +601,7 @@
     const autoApplyInput = panelEl.querySelector('#dsub-set-autoapply');
     const formatInput = panelEl.querySelector('#dsub-set-format');
     const sourceInput = panelEl.querySelector('#dsub-set-source');
+    const nfOffsetInput = panelEl.querySelector('#dsub-set-nfoffset');
 
     const scale = Number(state.settings.fontScale) || 3.2;
     if (apiKeyInput) apiKeyInput.value = state.settings.jimakuApiKey || '';
@@ -609,6 +613,7 @@
     if (opacityInput) opacityInput.value = opPct;
     if (autoApplyInput) autoApplyInput.checked = Boolean(state.settings.autoSearchApply);
     if (formatInput) formatInput.value = state.settings.preferredFormat || 'ass,srt,vtt';
+    if (nfOffsetInput) nfOffsetInput.value = Number(state.settings.netflixDefaultOffsetSec ?? -1.0).toFixed(1);
     if (sourceInput) sourceInput.value = state.settings.preferredSource || NEW_DEFAULT_SOURCE;
 
     const fsLabel = panelEl.querySelector('#dsub-val-fontsize');
@@ -777,6 +782,7 @@
     const autoApplyInput = panelEl.querySelector('#dsub-set-autoapply');
     const formatInput = panelEl.querySelector('#dsub-set-format');
     const sourceInput = panelEl.querySelector('#dsub-set-source');
+    const nfOffsetInput = panelEl.querySelector('#dsub-set-nfoffset');
 
     fontSizeInput.addEventListener('input', (e) => {
       const val = parseFloat(e.target.value);
@@ -818,6 +824,7 @@
         autoSearchApply: autoApplyInput.checked,
         preferredFormat: formatInput.value,
         preferredSource: sourceInput.value.trim() || NEW_DEFAULT_SOURCE,
+        netflixDefaultOffsetSec: Number.isFinite(nfOffsetInput.valueAsNumber) ? nfOffsetInput.valueAsNumber : -1.0,
       });
       const btn = panelEl.querySelector('#dsub-save-settings-btn');
       btn.textContent = '✓ 保存しました';
@@ -857,11 +864,19 @@
     }
   }
 
+  function applySourceDefaultOffset(filename, sourceCategory) {
+    const isNetflix = sourceCategory === 'netflix' || /netflix|(?:^|[.\s_\[\-])nf(?:$|[.\s_\]\-])/i.test(filename || '');
+    const offset = Number(state.settings.netflixDefaultOffsetSec ?? -1.0);
+    state.offsetSec = isNetflix ? (Number.isFinite(offset) ? offset : -1.0) : 0;
+    updateOffsetUI();
+  }
+
   function loadSubtitleFileObject(file) {
     const reader = new FileReader();
     reader.onload = () => {
       const content = String(reader.result || '');
       const cues = window.SubtitleParser.parseSubtitles(content, file.name);
+      applySourceDefaultOffset(file.name);
       setCues(cues, file.name.slice(0, 14));
     };
     reader.readAsText(file);
@@ -1102,6 +1117,7 @@
     }
 
     const cues = window.SubtitleParser.parseSubtitles(res.text, file.name);
+    applySourceDefaultOffset(file.name, file._sourceCategory);
     setCues(cues, 'Jimaku');
     statusEl.textContent = `✅ 適用完了: ${file.name} (${cues.length}行)`;
   }
