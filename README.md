@@ -7,6 +7,7 @@
 **Add Japanese subtitles (`.ass`, `.srt`, `.ssa`, `.vtt`) to streaming anime on d-anime Store and Amazon Prime Video — with Jimaku.cc + AniList auto-search and 1-click timing sync.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/kysing02/video-subtitle?label=Release&color=10b981)](https://github.com/kysing02/video-subtitle/releases/latest)
 [![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](extension/manifest.json)
 [![Languages](https://img.shields.io/badge/i18n-EN%20%7C%20日本語%20%7C%20简体中文-eb5528)](extension/i18n.js)
 [![Supported Sites](https://img.shields.io/badge/Players-d--anime%20Store%20%7C%20Prime%20Video-00a8e1)](extension/manifest.json)
@@ -44,12 +45,14 @@
 
 ## Quick Start
 
-1. Download or clone this repository:
-   ```bash
-   git clone https://github.com/kysing02/video-subtitle.git
-   ```
+1. **Get the extension**:
+   - **Recommended**: Download `anime-subtitle-extension-v1.1.0.zip` (or latest) from the **[Releases](https://github.com/kysing02/video-subtitle/releases)** page and unzip it.
+   - **Or clone with Git**:
+     ```bash
+     git clone https://github.com/kysing02/video-subtitle.git
+     ```
 2. Open `chrome://extensions/` in Chrome and turn on **Developer mode** (top right).
-3. Click **Load unpacked** and select the [`extension/`](extension/) folder.
+3. Click **Load unpacked** and select the unzipped folder (or [`extension/`](extension/) if cloned).
 4. *(For auto-search)* Get a free API key at [jimaku.cc/account](https://jimaku.cc/account), open the extension popup (or **⚙ Settings** inside the `💬 Subtitles` panel), paste your key, and save.
 
 ---
