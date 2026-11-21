@@ -15,10 +15,26 @@
   window.__DANIME_SUB_ASSISTANT_LOADED__ = true;
 
   const player = window.SubtitlePlayer || {
+    activeAdapter: null,
     isPrime: false,
     getVideo: () => document.querySelector('video'),
     primeInfo: () => ({}),
+    detectWorkInfo: async () => null,
   };
+  const getAdapter = () =>
+    (window.SubtitlePlayerRegistry && window.SubtitlePlayerRegistry.getActiveAdapter()) ||
+    player.activeAdapter || {
+      id: player.isPrime ? 'prime' : 'generic',
+      name: player.isPrime ? 'Amazon Prime Video' : 'HTML5 Video',
+      defaultSearchKind: player.isPrime ? 'drama' : 'anime',
+      autoSearchOnLoad: !player.isPrime,
+      resetOnNavigation: Boolean(player.isPrime),
+      pollMetadata: Boolean(player.isPrime),
+      alwaysResolveVideo: Boolean(player.isPrime),
+      uiClass: player.isPrime ? 'dsub-prime' : '',
+      getVideo: () => player.getVideo(),
+      detectWorkInfo: (helpers) => player.detectWorkInfo(helpers),
+    };
   let mediaGeneration = 0;
 
   const SOURCE_PRIORITY_PRESETS = {
@@ -195,17 +211,28 @@
     return match ? parseInt(match[1], 10) : null;
   }
 
-  // Fetch d-anime metadata from official internal REST endpoint or DOM
+  // Detect current work & episode metadata via the active player adapter
   async function detectWorkInfo() {
-    if (player.isPrime) {
-      const info = player.primeInfo();
+    const adapter = getAdapter();
+    const info = await adapter.detectWorkInfo({
+      cleanWorkTitle,
+      parseEpisodeNumber,
+    });
+    if (!info) return state.workInfo;
+
+    if (adapter.resetOnNavigation) {
       const previous = state.workInfo;
-      if (previous.workTitle && info.workTitle &&
-          (previous.workTitle !== info.workTitle ||
-           (previous.episodeNumber != null && info.episodeNumber != null && previous.episodeNumber !== info.episodeNumber))) {
+      if (
+        previous.workTitle &&
+        info.workTitle &&
+        (previous.workTitle !== info.workTitle ||
+          (previous.episodeNumber != null &&
+            info.episodeNumber != null &&
+            previous.episodeNumber !== info.episodeNumber))
+      ) {
         resetPrimeEpisode();
       }
-      // Player controls may temporarily disappear; retain known metadata until navigation.
+      // Retain known metadata while transient player overlays hide
       if (info.workTitle) {
         if (info.workTitle === state.workInfo.workTitle && info.episodeNumber == null) {
           info.episodeNumber = state.workInfo.episodeNumber;
@@ -216,62 +243,16 @@
       }
       return state.workInfo;
     }
-    const params = new URLSearchParams(window.location.search);
-    const partId = params.get('partId') || '';
 
-    if (partId) {
-      try {
-        const apiParams = new URLSearchParams({
-          defaultPlay: '5',
-          partId,
-          viewType: '5',
-        });
-        const res = await fetch(
-          `https://animestore.docomo.ne.jp/animestore/rest/WS010105?${apiParams}`,
-          { cache: 'no-cache' }
-        );
-        if (res.ok) {
-          const json = await res.json();
-          const data = json?.data;
-          if (data && data.workTitle) {
-            state.workInfo = {
-              partId,
-              workTitle: data.workTitle || '',
-              cleanTitle: cleanWorkTitle(data.workTitle || ''),
-              partDispNumber: data.partDispNumber || '',
-              partTitle: data.partTitle || '',
-              episodeNumber: parseEpisodeNumber(data.partDispNumber),
-            };
-            updateMetadataUI();
-            await maybeAutoSearchAndApply();
-            return state.workInfo;
-          }
-        }
-      } catch (_) {
-        // Fallback to DOM
-      }
-    }
-
-    // Fallback to DOM selectors (.backInfoTxt1, .backInfoTxt2, .backInfoTxt3)
-    const t1 = document.querySelector('.backInfoTxt1')?.textContent?.trim() || '';
-    const t2 = document.querySelector('.backInfoTxt2')?.textContent?.trim() || '';
-    const t3 = document.querySelector('.backInfoTxt3')?.textContent?.trim() || '';
-    if (t1) {
-      state.workInfo = {
-        partId: partId || t1 + '_' + t2,
-        workTitle: t1,
-        cleanTitle: cleanWorkTitle(t1),
-        partDispNumber: t2,
-        partTitle: t3,
-        episodeNumber: parseEpisodeNumber(t2),
-      };
-      updateMetadataUI();
-      await maybeAutoSearchAndApply();
-    }
+    state.workInfo = info;
+    updateMetadataUI();
+    await maybeAutoSearchAndApply();
     return state.workInfo;
   }
 
   async function maybeAutoSearchAndApply() {
+    const adapter = getAdapter();
+    if (!adapter.autoSearchOnLoad) return;
     if (!state.settings.autoSearchApply) return;
     if (!state.settings.jimakuApiKey) return;
     const key = `${state.workInfo.partId}_${state.workInfo.cleanTitle}_${state.workInfo.episodeNumber}`;
@@ -374,9 +355,10 @@
     makeOverlayDraggable(overlayEl, subBoxEl);
 
     // 2. Floating Action Button (FAB)
+    const adapter = getAdapter();
     fabEl = document.createElement('button');
     fabEl.id = 'danime-sub-fab';
-    fabEl.classList.toggle('dsub-prime', player.isPrime);
+    if (adapter.uiClass) fabEl.classList.add(adapter.uiClass);
     fabEl.title = '字幕アシスタントを開く (Alt+S: 字幕ON/OFF)';
     fabEl.innerHTML = `<span>💬 字幕</span><span class="danime-sub-badge" id="danime-sub-fab-badge">未読込</span>`;
     fabEl.addEventListener('click', () => {
@@ -391,7 +373,7 @@
     // 3. Control Panel
     panelEl = document.createElement('div');
     panelEl.id = 'danime-sub-panel';
-    panelEl.classList.toggle('dsub-prime', player.isPrime);
+    if (adapter.uiClass) panelEl.classList.add(adapter.uiClass);
     // Make panel focusable so clicking anywhere inside keeps focus inside the panel
     panelEl.tabIndex = -1;
     panelEl.innerHTML = `
@@ -411,8 +393,8 @@
         <div class="dsub-section active" id="dsub-tab-jimaku">
           <label class="dsub-row">検索対象
             <select class="dsub-select" id="dsub-search-kind" style="width:180px">
-              <option value="anime">アニメ</option>
-              <option value="drama" ${player.isPrime ? 'selected' : ''}>ドラマ・実写</option>
+              <option value="anime" ${adapter.defaultSearchKind === 'anime' ? 'selected' : ''}>アニメ</option>
+              <option value="drama" ${adapter.defaultSearchKind === 'drama' ? 'selected' : ''}>ドラマ・実写</option>
             </select>
           </label>
           <div class="dsub-row">
@@ -421,11 +403,11 @@
           </div>
           <div class="dsub-row">
             <button class="dsub-btn dsub-btn-primary" id="dsub-jimaku-search-btn" style="width: 100%;">
-              ${player.isPrime ? 'Jimaku.cc から字幕を検索' : 'Jimaku.cc から検索＆最適字幕を適用'}
+              ${adapter.autoSearchOnLoad ? 'Jimaku.cc から検索＆最適字幕を適用' : 'Jimaku.cc から字幕を検索'}
             </button>
           </div>
           <div class="dsub-status" id="dsub-jimaku-status">
-            ${player.isPrime ? 'Prime Video: 作品名・話数を確認して検索してください。検出できない場合は手入力できます。' : '再生中の作品タイトルから自動で日本語字幕(.ass/.srt)を検索・適用します。'}
+            ${adapter.autoSearchOnLoad ? '再生中の作品タイトルから自動で日本語字幕(.ass/.srt)を検索・適用します。' : `${adapter.name}: 作品名・話数を確認して検索してください。検出できない場合は手入力できます。`}
           </div>
           <div class="dsub-list" id="dsub-jimaku-results" style="display: none;"></div>
         </div>
@@ -993,7 +975,7 @@
 
   // Jimaku.cc Search & Multi-Entry Auto-load Flow
   async function handleJimakuSearch(options = { autoApplyBest: true }) {
-    if (player.isPrime) options = { ...options, autoApplyBest: false };
+    if (!getAdapter().autoSearchOnLoad) options = { ...options, autoApplyBest: false };
     const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
     const rawInputTitle = panelEl.querySelector('#dsub-search-title').value.trim();
@@ -1131,7 +1113,7 @@
       item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">📁 ${display}</span><span style="color:#9ca3af;font-size:11px;white-space:nowrap;">選択 ▶</span>`;
       item.addEventListener('click', () => {
         saveSelectedEntry(entry, resolvedMeta);
-        loadJimakuEntryFiles(entry, episode, !player.isPrime, entries, resolvedMeta);
+        loadJimakuEntryFiles(entry, episode, getAdapter().autoSearchOnLoad, entries, resolvedMeta);
       });
       listEl.appendChild(item);
     });
@@ -1254,8 +1236,9 @@
   // Render active subtitle cue for current video time
   function renderCurrentSubtitle() {
     if (!subBoxEl || !state.enabled) return;
-    if (player.isPrime || !currentVideo || !document.body.contains(currentVideo)) {
-      currentVideo = player.getVideo();
+    const adapter = getAdapter();
+    if (adapter.alwaysResolveVideo || !currentVideo || !document.body.contains(currentVideo)) {
+      currentVideo = adapter.getVideo();
     }
     if (!currentVideo || state.cues.length === 0) {
       subBoxEl.textContent = '';
@@ -1372,7 +1355,7 @@
     await detectWorkInfo();
 
     setInterval(() => {
-      const v = player.getVideo();
+      const v = getAdapter().getVideo();
       if (v && v !== currentVideo) {
         currentVideo = v;
         v.addEventListener('timeupdate', renderCurrentSubtitle);
@@ -1382,18 +1365,19 @@
       renderCurrentSubtitle();
     }, 100);
 
-    // Watch for episode / URL changes (partId change)
+    // Watch for episode / URL changes
     let lastHref = window.location.href;
     setInterval(() => {
+      const adapter = getAdapter();
       if (window.location.href !== lastHref) {
         lastHref = window.location.href;
-        if (player.isPrime) resetPrimeEpisode();
+        if (adapter.resetOnNavigation) resetPrimeEpisode();
         const titleInput = panelEl?.querySelector('#dsub-search-title');
         const epInput = panelEl?.querySelector('#dsub-search-ep');
         if (titleInput) delete titleInput.dataset.userEdited;
         if (epInput) delete epInput.dataset.userEdited;
         detectWorkInfo();
-      } else if (player.isPrime) {
+      } else if (adapter.pollMetadata) {
         detectWorkInfo();
       }
     }, 1000);

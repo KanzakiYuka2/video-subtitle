@@ -43,7 +43,9 @@
       ],
       "js": [
         "parser.js",
-        "player.js",
+        "players/registry.js",
+        "players/danime.js",
+        "players/prime.js",
         "content.js"
       ],
       "css": [
