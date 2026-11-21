@@ -3,12 +3,10 @@
  * Handles cross-origin API requests to:
  *  - AniList GraphQL API (franchise chain resolution, season & split-cour episode mapping)
  *  - Jimaku.cc API (multi-entry search, full file list caching, episode/subtitle matching, source tier ranking)
- *  - Local AI Whisper Server (http://127.0.0.1:8765)
  */
 
 const JIMAKU_BASE = 'https://jimaku.cc/api';
 const ANILIST_URL = 'https://graphql.anilist.co';
-const DEFAULT_AI_SERVER = 'http://127.0.0.1:8765';
 
 const SOURCE_PRIORITY_PRESETS = {
   platinum_other: 'ABEMA,DMMTV,U-NEXT,Amazon,Other,Netflix,NanokoRaws,shincaps',
@@ -42,7 +40,6 @@ async function getSettings() {
     chrome.storage.local.get(
       {
         jimakuApiKey: '',
-        aiServerUrl: DEFAULT_AI_SERVER,
         fontScale: 3.2,
         bottomPosition: 10,
         bgOpacity: 0.0,
@@ -1051,31 +1048,6 @@ async function downloadSubtitleText(url) {
   return decoder.decode(buffer);
 }
 
-async function checkAiServer(serverUrl) {
-  const base = (serverUrl || DEFAULT_AI_SERVER).replace(/\/+$/, '');
-  const res = await fetch(`${base}/health`, { method: 'GET' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json();
-}
-
-async function transcribeChunk(base64Wav, serverUrl, language = 'ja', prompt = '') {
-  const base = (serverUrl || DEFAULT_AI_SERVER).replace(/\/+$/, '');
-  const res = await fetch(`${base}/transcribe`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      audio_base64: base64Wav,
-      language,
-      initial_prompt: prompt,
-    }),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`AI Server Error (${res.status}): ${errText}`);
-  }
-  return await res.json();
-}
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
@@ -1117,25 +1089,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case 'JIMAKU_DOWNLOAD': {
           const text = await downloadSubtitleText(message.url);
           sendResponse({ ok: true, text });
-          break;
-        }
-
-        case 'AI_HEALTH': {
-          const serverUrl = message.serverUrl || settings.aiServerUrl;
-          const info = await checkAiServer(serverUrl);
-          sendResponse({ ok: true, info });
-          break;
-        }
-
-        case 'AI_TRANSCRIBE': {
-          const serverUrl = message.serverUrl || settings.aiServerUrl;
-          const result = await transcribeChunk(
-            message.audioBase64,
-            serverUrl,
-            message.language || 'ja',
-            message.prompt || ''
-          );
-          sendResponse({ ok: true, result });
           break;
         }
 

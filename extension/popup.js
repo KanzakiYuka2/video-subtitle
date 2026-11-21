@@ -7,14 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const apiKeyEl = document.getElementById('apiKey');
   const sourceModeEl = document.getElementById('sourcePriorityMode');
   const nfOffsetEl = document.getElementById('netflixDefaultOffsetSec');
-  const aiServerEl = document.getElementById('aiServerUrl');
   const saveBtn = document.getElementById('saveBtn');
   const toggleBtn = document.getElementById('togglePanelBtn');
 
   chrome.storage.local.get(
     {
       jimakuApiKey: '',
-      aiServerUrl: 'http://127.0.0.1:8765',
       sourcePriorityMode: 'platinum_other',
       preferredSource: SOURCE_PRIORITY_PRESETS.platinum_other,
       netflixDefaultOffsetSec: -1.0,
@@ -33,7 +31,6 @@ document.addEventListener('DOMContentLoaded', () => {
       apiKeyEl.value = items.jimakuApiKey || '';
       sourceModeEl.value = items.sourcePriorityMode || 'platinum_other';
       nfOffsetEl.value = Number(items.netflixDefaultOffsetSec ?? -1.0).toFixed(1);
-      aiServerEl.value = items.aiServerUrl || 'http://127.0.0.1:8765';
     }
   );
 
@@ -44,7 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
       : parseFloat(nfOffsetEl.value);
     const payload = {
       jimakuApiKey: apiKeyEl.value.trim(),
-      aiServerUrl: aiServerEl.value.trim() || 'http://127.0.0.1:8765',
       sourcePriorityMode: mode,
       netflixDefaultOffsetSec: Number.isFinite(nfOff) ? Math.round(nfOff * 10) / 10 : -1.0,
       netflixOffsetMigratedV1: true,

@@ -53,7 +53,6 @@
     },
     settings: {
       jimakuApiKey: '',
-      aiServerUrl: 'http://127.0.0.1:8765',
       fontScale: 3.2,
       bottomPosition: 10,
       bgOpacity: 0.0,
@@ -65,14 +64,6 @@
       netflixDefaultOffsetSec: -1.0,
       workOffsets: {}, // { [workKey]: number, [`${workKey}::${sourceCat}`]: number }
       workEntries: {}, // { [`${workKey}::s${season}`]: entryId }
-    },
-    ai: {
-      active: false,
-      mode: 'whisper',
-      chunkSec: 3.5,
-      timerId: null,
-      busy: false,
-      recognition: null,
     },
   };
 
@@ -412,7 +403,6 @@
       <div class="dsub-tabs">
         <button class="dsub-tab active" data-tab="jimaku">🔍 自動検索</button>
         <button class="dsub-tab" data-tab="local">📂 ファイル</button>
-        <button class="dsub-tab" data-tab="ai">🎙️ AIリアルタイム</button>
         <button class="dsub-tab" data-tab="settings">⚙ 設定</button>
       </div>
 
@@ -452,30 +442,7 @@
           </div>
         </div>
 
-        <!-- Tab 3: AI Real-Time Whisper -->
-        <div class="dsub-section" id="dsub-tab-ai">
-          <div class="dsub-status" id="dsub-ai-status">
-            字幕ファイルが存在しない作品を、再生中の音声からリアルタイムにAI文字起こしします。
-          </div>
-          <div class="dsub-row">
-            <span class="dsub-label">AIエンジン</span>
-            <select class="dsub-select" id="dsub-ai-mode" style="width: 210px;">
-              <option value="whisper">ローカルGPU Whisper (推奨・高精度)</option>
-              <option value="webspeech">ブラウザ音声認識 (サーバー不要)</option>
-            </select>
-          </div>
-          <div class="dsub-row">
-            <button class="dsub-btn dsub-btn-primary" id="dsub-ai-toggle-btn" style="width: 100%;">
-              🎙️ AIリアルタイム字幕を開始
-            </button>
-          </div>
-          <div class="dsub-hint">
-            ※ローカルGPUサーバー起動コマンド:<br/>
-            <code>./start_server.sh</code> (RTX GPUで高速動作)
-          </div>
-        </div>
-
-        <!-- Tab 4: Settings -->
+        <!-- Tab 3: Settings -->
         <div class="dsub-section" id="dsub-tab-settings">
           <div class="dsub-row">
             <label class="dsub-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
@@ -524,10 +491,6 @@
               <input type="range" id="dsub-set-opacity" min="0" max="100" value="0" style="width: 110px;" />
               <button class="dsub-btn" id="dsub-transparent-btn" style="padding:3px 6px;font-size:11px;" title="背景を完全透明にする">透明</button>
             </div>
-          </div>
-          <div>
-            <div class="dsub-label" style="margin-bottom: 4px;">ローカルAIサーバーURL</div>
-            <input type="text" class="dsub-input" id="dsub-set-aiurl" placeholder="http://127.0.0.1:8765" />
           </div>
           <button class="dsub-btn dsub-btn-primary" id="dsub-save-settings-btn">設定を保存</button>
         </div>
@@ -726,7 +689,6 @@
   function syncSettingsToUI() {
     if (!panelEl) return;
     const apiKeyInput = panelEl.querySelector('#dsub-set-apikey');
-    const aiUrlInput = panelEl.querySelector('#dsub-set-aiurl');
     const fontSizeInput = panelEl.querySelector('#dsub-set-fontsize');
     const bottomInput = panelEl.querySelector('#dsub-set-bottom');
     const opacityInput = panelEl.querySelector('#dsub-set-opacity');
@@ -738,7 +700,6 @@
 
     const scale = Number(state.settings.fontScale) || 3.2;
     if (apiKeyInput) apiKeyInput.value = state.settings.jimakuApiKey || '';
-    if (aiUrlInput) aiUrlInput.value = state.settings.aiServerUrl || 'http://127.0.0.1:8765';
     if (fontSizeInput) fontSizeInput.value = scale;
     if (bottomInput) bottomInput.value = state.settings.bottomPosition;
 
@@ -888,18 +849,8 @@
       URL.revokeObjectURL(url);
     });
 
-    // AI Toggle Button
-    panelEl.querySelector('#dsub-ai-toggle-btn').addEventListener('click', () => {
-      if (state.ai.active) {
-        stopAiTranscription();
-      } else {
-        startAiTranscription();
-      }
-    });
-
     // Settings inputs
     const apiKeyInput = panelEl.querySelector('#dsub-set-apikey');
-    const aiUrlInput = panelEl.querySelector('#dsub-set-aiurl');
     const fontSizeInput = panelEl.querySelector('#dsub-set-fontsize');
     const bottomInput = panelEl.querySelector('#dsub-set-bottom');
     const opacityInput = panelEl.querySelector('#dsub-set-opacity');
@@ -966,7 +917,6 @@
         : parseFloat(nfOffsetInput.value);
       saveSettings({
         jimakuApiKey: apiKeyInput.value.trim(),
-        aiServerUrl: aiUrlInput.value.trim() || 'http://127.0.0.1:8765',
         autoSearchApply: autoApplyInput.checked,
         preferredFormat: formatInput.value,
         sourcePriorityMode: mode,
@@ -1078,8 +1028,7 @@
     const resolvedMeta = res.resolvedMeta || {};
 
     if (entries.length === 0) {
-      statusEl.innerHTML =
-        '⚠️ Jimaku.cc に該当作品の字幕が見つかりませんでした。<br/>「🎙️ AIリアルタイム」タブからAI自動字幕をお試しください！';
+      statusEl.textContent = '⚠️ Jimaku.cc に該当作品の字幕が見つかりませんでした。';
       return;
     }
 
@@ -1302,154 +1251,6 @@
     statusEl.textContent = `✅ 適用完了: ${file.name} (${cues.length}行)`;
   }
 
-  // Real-Time AI Transcription (Local GPU Faster-Whisper Server or WebSpeech)
-  async function startAiTranscription() {
-    const mode = panelEl.querySelector('#dsub-ai-mode').value;
-    const statusEl = panelEl.querySelector('#dsub-ai-status');
-    const toggleBtn = panelEl.querySelector('#dsub-ai-toggle-btn');
-
-    const video = player.getVideo();
-    if (!video) {
-      statusEl.textContent = '❌ 再生中の動画(<video>)が見つかりません。';
-      return;
-    }
-
-    state.ai.mode = mode;
-
-    if (mode === 'whisper') {
-      statusEl.textContent = '🔌 ローカルAIサーバー (127.0.0.1:8765) の接続を確認中...';
-      const health = await sendBgMessage({
-        type: 'AI_HEALTH',
-        serverUrl: state.settings.aiServerUrl,
-      });
-
-      if (!health.ok) {
-        statusEl.innerHTML =
-          '❌ ローカルAIサーバーに接続できません。<br/>ターミナルで <code>./start_server.sh</code> を起動してください。';
-        return;
-      }
-
-      try {
-        await startVideoAudioCapture(video, statusEl);
-      } catch (err) {
-        statusEl.textContent = `❌ 音声キャプチャエラー: ${err.message || err}`;
-        return;
-      }
-    } else {
-      startWebSpeechFallback(statusEl);
-    }
-
-    state.ai.active = true;
-    toggleBtn.textContent = '⏹ AIリアルタイム字幕を停止';
-    toggleBtn.classList.add('dsub-btn-danger');
-    updateBadge('AI字幕稼働中');
-  }
-
-  function stopAiTranscription() {
-    const statusEl = panelEl?.querySelector('#dsub-ai-status');
-    const toggleBtn = panelEl?.querySelector('#dsub-ai-toggle-btn');
-
-    state.ai.active = false;
-    if (state.ai.timerId) {
-      clearInterval(state.ai.timerId);
-      state.ai.timerId = null;
-    }
-    if (state.ai.recognition) {
-      try {
-        state.ai.recognition.stop();
-      } catch (_) {}
-      state.ai.recognition = null;
-    }
-
-    if (toggleBtn) {
-      toggleBtn.textContent = '🎙️ AIリアルタイム字幕を開始';
-      toggleBtn.classList.remove('dsub-btn-danger');
-    }
-    if (statusEl) {
-      statusEl.textContent = '⏹ AIリアルタイム字幕を停止しました。';
-    }
-    updateBadge(state.cues.length ? `AI (${state.cues.length}行)` : '未読込');
-  }
-
-  async function startVideoAudioCapture(video, statusEl) {
-    statusEl.textContent =
-      '🟢 ローカルGPU Whisper でリアルタイム文字起こし中... (システム音声モニター同期)';
-
-    const promptTitle = state.workInfo.cleanTitle
-      ? `アニメ「${state.workInfo.cleanTitle}」の日本語セリフ。`
-      : 'アニメの日本語のセリフ。';
-
-    state.ai.timerId = setInterval(async () => {
-      if (!state.ai.active || state.ai.busy || video.paused) return;
-      state.ai.busy = true;
-      const chunkEndVideoTime = video.currentTime;
-      const chunkDuration = state.ai.chunkSec;
-      const chunkStartVideoTime = Math.max(0, chunkEndVideoTime - chunkDuration);
-
-      try {
-        const res = await sendBgMessage({
-          type: 'AI_TRANSCRIBE',
-          audioBase64: null,
-          language: 'ja',
-          prompt: promptTitle,
-          serverUrl: state.settings.aiServerUrl,
-        });
-
-        if (res.ok && res.result && res.result.text) {
-          const text = res.result.text.trim();
-          if (text) {
-            const cue = {
-              start: chunkStartVideoTime,
-              end: chunkEndVideoTime + 2.2,
-              text,
-            };
-            state.cues.push(cue);
-            subBoxEl.textContent = text;
-            statusEl.textContent = `🟢 認識: 「${text}」`;
-          }
-        }
-      } catch (_) {
-        // Ignore transient errors
-      } finally {
-        state.ai.busy = false;
-      }
-    }, 2200);
-  }
-
-  function startWebSpeechFallback(statusEl) {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      statusEl.textContent = '❌ このブラウザはWeb Speech APIに対応していません。';
-      return;
-    }
-    const rec = new SpeechRecognition();
-    rec.lang = 'ja-JP';
-    rec.continuous = true;
-    rec.interimResults = true;
-
-    rec.onresult = (event) => {
-      let text = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        text += event.results[i][0].transcript;
-      }
-      if (text.trim()) {
-        subBoxEl.textContent = text.trim();
-      }
-    };
-    rec.onerror = () => {};
-    rec.onend = () => {
-      if (state.ai.active && state.ai.mode === 'webspeech') {
-        try {
-          rec.start();
-        } catch (_) {}
-      }
-    };
-    rec.start();
-    state.ai.recognition = rec;
-    statusEl.textContent = '🟢 ブラウザ音声認識でリアルタイム字幕表示中...';
-  }
-
   // Render active subtitle cue for current video time
   function renderCurrentSubtitle() {
     if (!subBoxEl || !state.enabled) return;
@@ -1457,7 +1258,7 @@
       currentVideo = player.getVideo();
     }
     if (!currentVideo || state.cues.length === 0) {
-      if (!state.ai.active) subBoxEl.textContent = '';
+      subBoxEl.textContent = '';
       return;
     }
 
@@ -1547,7 +1348,6 @@
 
   function resetPrimeEpisode() {
     mediaGeneration++;
-    stopAiTranscription();
     setCues([], '未読込');
     state.offsetSec = 0;
     state.offsetRuleLabel = '';

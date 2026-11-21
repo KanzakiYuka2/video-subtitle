@@ -11,8 +11,6 @@
     "https://jimaku.cc/*",
     "https://*.jimaku.cc/*",
     "https://graphql.anilist.co/*",
-    "http://127.0.0.1:8765/*",
-    "http://localhost:8765/*",
     "https://www.amazon.co.jp/gp/video/*",
     "https://www.amazon.co.jp/Prime-Video/*",
     "https://www.primevideo.com/*",
