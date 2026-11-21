@@ -1,26 +1,43 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>字幕アシスタント (dアニメ・Prime)</title>
+  <title>Subtitle Assistant</title>
   <link rel="stylesheet" href="styles.css" />
   <style>
     body {
-      width: 340px;
+      width: 348px;
       margin: 0;
       padding: 14px 16px;
       background: #18191e;
       color: #f3f4f6;
-      font-family: "Noto Sans JP", "Hiragino Sans", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", "PingFang SC", sans-serif;
       font-size: 13px;
     }
+    .popup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
     h2 {
-      margin: 0 0 10px 0;
+      margin: 0;
       font-size: 15px;
       color: #ff7849;
       display: flex;
       align-items: center;
       gap: 6px;
+    }
+    .popup-lang-select {
+      width: auto;
+      padding: 3px 7px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.4);
+      color: #f3f4f6;
+      font-size: 11px;
+      cursor: pointer;
     }
     .field {
       margin-bottom: 10px;
@@ -108,19 +125,23 @@
   </style>
 </head>
 <body>
-  <h2>🎬 字幕アシスタント</h2>
+  <div class="popup-header">
+    <h2 id="popupTitle">🎬 Subtitle Assistant</h2>
+    <select id="languageSelect" class="popup-lang-select" aria-label="Language">
+      <option value="en">English</option>
+      <option value="ja">日本語</option>
+      <option value="zh_CN">简体中文</option>
+    </select>
+  </div>
   <div class="field">
-    <label for="apiKey">Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank" rel="noopener">無料取得</a>)</label>
-    <input type="text" id="apiKey" class="popup-input" autocomplete="off" spellcheck="false" style="-webkit-text-security: disc;" placeholder="APIキーを入力..." />
+    <label for="apiKey" id="apiKeyLabel"></label>
+    <input type="text" id="apiKey" class="popup-input" autocomplete="off" spellcheck="false" style="-webkit-text-security: disc;" />
   </div>
   <div class="field" id="popup-source-mount"></div>
-  <button id="saveBtn" class="popup-btn">設定を保存</button>
-  <button id="togglePanelBtn" class="popup-btn secondary">再生画面の字幕パネルを開閉</button>
-  <div class="hint">
-    ・再生画面右上の「💬 字幕」ボタンから自動検索・ファイル読込が使えます。<br/>
-    ・オフセット調整値は作品・ソースごとに自動記憶されます。<br/>
-    ・ショートカット: <b>Alt+S</b> (表示切替), <b>[ / ]</b> (0.5秒ズレ補正)
-  </div>
+  <button id="saveBtn" class="popup-btn"></button>
+  <button id="togglePanelBtn" class="popup-btn secondary"></button>
+  <div class="hint" id="popupHint"></div>
+  <script src="i18n.js"></script>
   <script src="source_profiles.js"></script>
   <script src="popup.js"></script>
 </body>

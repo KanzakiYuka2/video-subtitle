@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "流媒体外挂字幕助手 (多平台叠加显示)",
+    "description": "Extension name shown in browser toolbar and extensions page"
+  },
+  "extDescription": {
+    "message": "为 d-anime Store、Amazon Prime Video 等在线视频播放器叠加外挂字幕 (.ass/.srt/.vtt)，支持 Jimaku.cc 自动检索、点击台词同步与可扩展播放器适配器。",
+    "description": "Extension description"
+  }
+}

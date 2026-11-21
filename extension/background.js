@@ -1,5 +1,5 @@
 /**
- * Background Service Worker for d-anime Subtitle Assistant
+ * Background Service Worker for Multi-Platform Video Subtitle Assistant
  * Handles cross-origin API requests to:
  *  - AniList GraphQL API (franchise chain resolution, season & split-cour episode mapping)
  *  - Jimaku.cc API (multi-entry search, full file list caching, episode/subtitle matching, source tier ranking)
@@ -7,6 +7,13 @@
 
 const JIMAKU_BASE = 'https://jimaku.cc/api';
 const ANILIST_URL = 'https://graphql.anilist.co';
+
+function createCodedError(errorCode, message, errorStatus = null) {
+  const err = new Error(message);
+  err.errorCode = errorCode;
+  if (errorStatus != null) err.errorStatus = errorStatus;
+  return err;
+}
 
 const DEFAULT_SOURCE_PROFILES = [
   { id: 'abema', name: 'ABEMA', offset: 0.0, locked: false },
@@ -569,7 +576,10 @@ function scoreSeasonMatch(titlesArray, targetSeason) {
  */
 async function jimakuSearch(rawTitle, apiKey, kind = 'anime', targetEpisode = null) {
   if (!apiKey) {
-    throw new Error('Jimaku APIキーが設定されていません。パネルの「⚙ 設定」から登録してください。');
+    throw createCodedError(
+      'API_KEY_MISSING',
+      'Jimaku API key is not set. Please register it in Settings.'
+    );
   }
   const headers = {
     Authorization: apiKey.trim(),
@@ -581,9 +591,19 @@ async function jimakuSearch(rawTitle, apiKey, kind = 'anime', targetEpisode = nu
     const query = new URLSearchParams({ query: rawTitle.trim(), anime: 'false' });
     const response = await fetch(`${JIMAKU_BASE}/entries/search?${query}`, { headers });
     if (response.status === 401 || response.status === 403) {
-      throw new Error('Jimaku APIキーが無効です（401 Unauthorized）。設定を確認してください。');
+      throw createCodedError(
+        'UNAUTHORIZED',
+        'Invalid Jimaku API key (401 Unauthorized). Check Settings.',
+        response.status
+      );
     }
-    if (!response.ok) throw new Error(`Jimaku検索エラー (${response.status})`);
+    if (!response.ok) {
+      throw createCodedError(
+        'SEARCH_HTTP_ERROR',
+        `Jimaku search error (${response.status})`,
+        response.status
+      );
+    }
     const entries = await response.json();
     return { entries: Array.isArray(entries) ? entries : [], resolvedMeta: {} };
   }
@@ -661,7 +681,11 @@ async function jimakuSearch(rawTitle, apiKey, kind = 'anime', targetEpisode = nu
     fetch(`${JIMAKU_BASE}/entries/search?anilist_id=${id}`, { headers })
       .then(async (r) => {
         if (r.status === 401 || r.status === 403) {
-          throw new Error('Jimaku APIキーが無効です（401 Unauthorized）。設定を確認してください。');
+          throw createCodedError(
+            'UNAUTHORIZED',
+            'Invalid Jimaku API key (401 Unauthorized). Check Settings.',
+            r.status
+          );
         }
         return r.ok ? r.json() : [];
       })
@@ -674,7 +698,11 @@ async function jimakuSearch(rawTitle, apiKey, kind = 'anime', targetEpisode = nu
     })
       .then(async (r) => {
         if (r.status === 401 || r.status === 403) {
-          throw new Error('Jimaku APIキーが無効です（401 Unauthorized）。設定を確認してください。');
+          throw createCodedError(
+            'UNAUTHORIZED',
+            'Invalid Jimaku API key (401 Unauthorized). Check Settings.',
+            r.status
+          );
         }
         return r.ok ? r.json() : [];
       })
@@ -1074,7 +1102,10 @@ function filterAndRankFiles(
 
 async function jimakuGetFiles(entryId, episodeNumber, apiKey, settings, extraMeta = {}) {
   if (!apiKey) {
-    throw new Error('Jimaku APIキーが設定されていません。');
+    throw createCodedError(
+      'API_KEY_MISSING',
+      'Jimaku API key is not set. Please register it in Settings.'
+    );
   }
   const headers = {
     Authorization: apiKey.trim(),
@@ -1087,10 +1118,18 @@ async function jimakuGetFiles(entryId, episodeNumber, apiKey, settings, extraMet
     const allUrl = `${JIMAKU_BASE}/entries/${entryId}/files`;
     const allRes = await fetch(allUrl, { headers });
     if (allRes.status === 401 || allRes.status === 403) {
-      throw new Error('Jimaku APIキーが無効です（401 Unauthorized）。設定を確認してください。');
+      throw createCodedError(
+        'UNAUTHORIZED',
+        'Invalid Jimaku API key (401 Unauthorized). Check Settings.',
+        allRes.status
+      );
     }
     if (!allRes.ok) {
-      throw new Error(`ファイル一覧の取得に失敗しました (${allRes.status})`);
+      throw createCodedError(
+        'FILES_HTTP_ERROR',
+        `Failed to fetch subtitle files (${allRes.status})`,
+        allRes.status
+      );
     }
     files = await allRes.json();
     if (Array.isArray(files)) {
@@ -1110,7 +1149,11 @@ async function jimakuGetFiles(entryId, episodeNumber, apiKey, settings, extraMet
 async function downloadSubtitleText(url) {
   const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`字幕ファイルのダウンロードに失敗しました (${res.status})`);
+    throw createCodedError(
+      'DOWNLOAD_HTTP_ERROR',
+      `Failed to download subtitle file (${res.status})`,
+      res.status
+    );
   }
   const buffer = await res.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -1175,6 +1218,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({
         ok: false,
         error: err && err.message ? err.message : String(err),
+        errorCode: err && err.errorCode ? err.errorCode : '',
+        errorStatus: err && err.errorStatus ? err.errorStatus : null,
       });
     }
   })();

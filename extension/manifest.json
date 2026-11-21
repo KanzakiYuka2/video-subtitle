@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "字幕アシスタント (dアニメ・Prime Video)",
+  "default_locale": "en",
+  "name": "__MSG_extName__",
   "version": "1.1.0",
-  "description": "dアニメストア・Prime Videoに日本語字幕を追加。Jimakuのアニメ・ドラマ検索、字幕ファイル読込、クリックでタイミング調整。",
+  "description": "__MSG_extDescription__",
   "permissions": [
     "storage"
   ],
@@ -42,6 +43,7 @@
         "https://primevideo.com/*"
       ],
       "js": [
+        "i18n.js",
         "parser.js",
         "source_profiles.js",
         "players/registry.js",

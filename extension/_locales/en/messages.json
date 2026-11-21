@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "Subtitle Overlay Assistant — Multi-Platform VOD",
+    "description": "Extension name shown in browser toolbar and extensions page"
+  },
+  "extDescription": {
+    "message": "Overlay external ASS/SRT/VTT subtitles on streaming video players with Jimaku.cc auto-search, smart sync, and modular player adapters.",
+    "description": "Extension description"
+  }
+}

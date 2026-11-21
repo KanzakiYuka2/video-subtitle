@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "字幕オーバーレイアシスタント (マルチプレイヤー対応)",
+    "description": "Extension name shown in browser toolbar and extensions page"
+  },
+  "extDescription": {
+    "message": "dアニメストア・Amazon Prime Video などの動画配信プレイヤーに外部字幕 (.ass/.srt/.vtt) をオーバーレイ表示。Jimaku.cc 自動検索・クリック同期・作品別オフセット記憶対応。",
+    "description": "Extension description"
+  }
+}

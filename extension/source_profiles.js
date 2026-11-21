@@ -146,16 +146,16 @@
   }
 
   const DEFAULT_LABELS = {
-    title: 'ソース優先順 & 標準オフセット',
-    lockedOffsetLabel: '0.0s 固定',
-    lockedDeleteTitle: 'Other は標準オフセット 0.0s 固定・削除不可（ドラッグで優先順変更可）',
-    deleteTitle: 'このソースを削除',
-    offsetInputTitle: '標準オフセット (秒)',
-    dragTitle: 'ドラッグで優先順を並び替え',
-    addPlaceholder: 'ソース名を追加 (例: Crunchyroll)',
-    addBtn: '追加',
-    resetBtn: '初期値に戻す',
-    hint: 'ドラッグで順番変更 / Other は 0.0s 固定・削除不可',
+    title: 'Source Priority & Default Offset',
+    lockedOffsetLabel: '0.0s Fixed',
+    lockedDeleteTitle: 'Other is fixed at 0.0s and cannot be deleted (drag to reorder priority).',
+    deleteTitle: 'Remove source',
+    offsetInputTitle: 'Default offset in seconds',
+    dragTitle: 'Drag to reorder priority',
+    addPlaceholder: 'Add source (e.g. Crunchyroll)',
+    addBtn: 'Add',
+    resetBtn: 'Reset',
+    hint: 'Drag to reorder · Inline default offset · Other locked at 0.0s',
   };
 
   /**

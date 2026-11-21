@@ -48,7 +48,7 @@
   display: none;
 }
 
-/* 右上フローティングボタン */
+/* Top-right floating action button */
 #danime-sub-fab {
   position: fixed;
   top: 16px;
@@ -87,7 +87,7 @@
   background: rgba(0, 0, 0, 0.35);
 }
 
-/* コントロールパネル (ドロワー/モーダル) */
+/* Control panel (drawer / modal) */
 #danime-sub-panel {
   position: fixed;
   top: 58px;

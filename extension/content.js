@@ -37,6 +37,7 @@
     };
   let mediaGeneration = 0;
 
+  const I18N = window.DSubI18n;
   const SP = window.DSubSourceProfiles;
   let sourceEditor = null;
 
@@ -52,8 +53,10 @@
     cues: [], // Array<{ start: number, end: number, text: string }>
     offsetSec: 0.0,
     offsetRuleLabel: '',
+    offsetRuleMeta: null, // { type: 'work_source'|'work'|'source_default', name?: string }
     currentSourceCategory: '',
-    sourceLabel: '未読込',
+    sourceLabel: I18N.t('unloadedBadge'),
+    badgeMeta: { type: 'unloaded', label: '', count: 0 },
     lastAutoSearchedPartId: '',
     workInfo: {
       partId: '',
@@ -64,6 +67,7 @@
       episodeNumber: null,
     },
     settings: {
+      language: I18N.detectDefaultLanguage(),
       jimakuApiKey: '',
       fontScale: 4.5,
       bottomPosition: 5,
@@ -78,6 +82,28 @@
       workEntries: {}, // { [`${workKey}::s${season}`]: entryId }
     },
   };
+
+  function t(key, vars) {
+    return I18N.t(key, vars, state.settings.language);
+  }
+
+  function formatBgError(res) {
+    if (!res) return t('errNoResponse');
+    switch (res.errorCode) {
+      case 'API_KEY_MISSING':
+        return t('bgErrApiKeyMissing');
+      case 'UNAUTHORIZED':
+        return t('bgErrUnauthorized');
+      case 'SEARCH_HTTP_ERROR':
+        return t('bgErrSearchHttp', { status: res.errorStatus || '?' });
+      case 'FILES_HTTP_ERROR':
+        return t('bgErrFilesHttp', { status: res.errorStatus || '?' });
+      case 'DOWNLOAD_HTTP_ERROR':
+        return t('bgErrDownloadHttp', { status: res.errorStatus || '?' });
+      default:
+        return res.error || t('errNoResponse');
+    }
+  }
 
   let overlayEl = null;
   let subBoxEl = null;
@@ -139,12 +165,16 @@
       chrome.storage.local.get(
         {
           ...state.settings,
+          language: '',
           sourceProfiles: null,
           netflixOffsetMigratedV1: false,
           styleDefaultsMigratedV2: false,
         },
         (items) => {
           const updates = {};
+          items.language = items.language
+            ? I18N.normalizeLanguage(items.language)
+            : I18N.detectDefaultLanguage();
           if (!items.preferredSource || LEGACY_DEFAULT_SOURCES.has(items.preferredSource)) {
             items.preferredSource = SP.DEFAULT_PREFERRED_SOURCE;
             updates.preferredSource = items.preferredSource;
@@ -187,6 +217,7 @@
           items.workEntries = items.workEntries && typeof items.workEntries === 'object' ? items.workEntries : {};
           Object.assign(state.settings, items);
           syncSettingsToUI();
+          applyLocalizationToUI();
           applyOverlayStyles();
           resolve(state.settings);
         }
@@ -205,11 +236,11 @@
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(payload, (response) => {
         if (generation !== mediaGeneration) {
-          resolve({ ok: false, error: '動画が切り替わりました。再検索してください。' });
+          resolve({ ok: false, error: t('errVideoSwitched') });
         } else if (chrome.runtime.lastError) {
           resolve({ ok: false, error: chrome.runtime.lastError.message });
         } else {
-          resolve(response || { ok: false, error: 'No response' });
+          resolve(response || { ok: false, error: t('errNoResponse') });
         }
       });
     });
@@ -287,11 +318,26 @@
     }
   }
 
+  function computeOffsetRuleLabel() {
+    const meta = state.offsetRuleMeta;
+    if (!meta) return '';
+    if (meta.type === 'work_source') {
+      return t('ruleWorkSourceMemory', { source: String(meta.source || '').toUpperCase() });
+    }
+    if (meta.type === 'work') {
+      return t('ruleWorkMemory');
+    }
+    if (meta.type === 'source_default') {
+      return t('ruleSourceDefault', { source: meta.name || '' });
+    }
+    return '';
+  }
+
   /**
    * Resolve initial offset for the currently loaded subtitle file:
-   * 1. Saved per-anime x source offset (workOffsets["Title::netflix"])
-   * 2. Saved per-anime offset (workOffsets["Title"])
-   * 3. Global Netflix default offset if sourceCategory === 'netflix' and non-zero
+   * 1. Saved per-title x source offset (workOffsets["Title::netflix"])
+   * 2. Saved per-title offset (workOffsets["Title"])
+   * 3. Configured source default offset from `sourceProfiles` (except `Other`)
    * 4. 0.0s
    */
   function applySavedOffsetForSource(sourceCategory) {
@@ -300,30 +346,31 @@
     const offsets = state.settings.workOffsets || {};
 
     let nextOffset = 0.0;
-    let ruleLabel = '';
+    let ruleMeta = null;
 
     if (workKey && sourceCategory && Object.prototype.hasOwnProperty.call(offsets, `${workKey}::${sourceCategory}`)) {
       nextOffset = Number(offsets[`${workKey}::${sourceCategory}`]) || 0.0;
-      ruleLabel = `作品×${sourceCategory.toUpperCase()}記憶`;
+      ruleMeta = { type: 'work_source', source: sourceCategory };
     } else if (workKey && Object.prototype.hasOwnProperty.call(offsets, workKey)) {
       nextOffset = Number(offsets[workKey]) || 0.0;
-      ruleLabel = '作品記憶';
+      ruleMeta = { type: 'work' };
     } else if (sourceCategory && sourceCategory !== 'other') {
       const profiles = SP.normalizeSourceProfiles(state.settings.sourceProfiles);
       const matchedProfile = profiles.find((p) => p.id === sourceCategory);
       if (matchedProfile && !matchedProfile.locked && Number(matchedProfile.offset) !== 0) {
         nextOffset = Number(matchedProfile.offset) || 0.0;
-        ruleLabel = `${matchedProfile.name}標準`;
+        ruleMeta = { type: 'source_default', name: matchedProfile.name };
       }
     }
 
     state.offsetSec = Math.round(nextOffset * 10) / 10;
-    state.offsetRuleLabel = ruleLabel;
+    state.offsetRuleMeta = ruleMeta;
+    state.offsetRuleLabel = computeOffsetRuleLabel();
     updateOffsetUI();
   }
 
   /**
-   * Persist manual offset changes per anime (and per anime x source).
+   * Persist manual offset changes per title (and per title x source).
    */
   function saveCurrentWorkOffset() {
     const workKey = getWorkStorageKey();
@@ -332,10 +379,11 @@
     nextMap[workKey] = state.offsetSec;
     if (state.currentSourceCategory) {
       nextMap[`${workKey}::${state.currentSourceCategory}`] = state.offsetSec;
-      state.offsetRuleLabel = `作品×${state.currentSourceCategory.toUpperCase()}記憶`;
+      state.offsetRuleMeta = { type: 'work_source', source: state.currentSourceCategory };
     } else {
-      state.offsetRuleLabel = '作品記憶';
+      state.offsetRuleMeta = { type: 'work' };
     }
+    state.offsetRuleLabel = computeOffsetRuleLabel();
     saveSettings({ workOffsets: nextMap });
     updateOffsetUI();
   }
@@ -355,7 +403,7 @@
     subBoxEl.tabIndex = 0;
     subBoxEl.setAttribute('role', 'button');
     subBoxEl.setAttribute('aria-expanded', 'false');
-    subBoxEl.title = 'クリックで字幕一覧・タイミング調整 / ドラッグで移動';
+    subBoxEl.title = t('overlayTooltip');
     subBoxEl.addEventListener('click', (e) => {
       e.stopPropagation();
       if (!suppressSubtitleClick) toggleLyrics();
@@ -377,8 +425,8 @@
     fabEl = document.createElement('button');
     fabEl.id = 'danime-sub-fab';
     if (adapter.uiClass) fabEl.classList.add(adapter.uiClass);
-    fabEl.title = '字幕アシスタントを開く (Alt+S: 字幕ON/OFF)';
-    fabEl.innerHTML = `<span>💬 字幕</span><span class="danime-sub-badge" id="danime-sub-fab-badge">未読込</span>`;
+    fabEl.title = t('fabTitle');
+    fabEl.innerHTML = `<span class="dsub-fab-label">${t('fabLabel')}</span><span class="danime-sub-badge" id="danime-sub-fab-badge">${t('unloadedBadge')}</span>`;
     fabEl.addEventListener('click', () => {
       panelEl.classList.toggle('open');
       fabEl.classList.toggle('active', panelEl.classList.contains('open'));
@@ -392,101 +440,105 @@
     panelEl = document.createElement('div');
     panelEl.id = 'danime-sub-panel';
     if (adapter.uiClass) panelEl.classList.add(adapter.uiClass);
-    // Make panel focusable so clicking anywhere inside keeps focus inside the panel
+    // Keep focus inside the panel when clicking panel controls
     panelEl.tabIndex = -1;
     panelEl.innerHTML = `
       <div class="dsub-header">
-        <div class="dsub-title">🎬 字幕アシスタント</div>
-        <button class="dsub-close" id="dsub-close-btn" title="閉じる">×</button>
+        <div class="dsub-title">🎬 <span data-i18n="appTitle"></span></div>
+        <button class="dsub-close" id="dsub-close-btn" data-i18n-title="closeBtnTitle">×</button>
       </div>
 
       <div class="dsub-tabs">
-        <button class="dsub-tab active" data-tab="jimaku">🔍 自動検索</button>
-        <button class="dsub-tab" data-tab="local">📂 ファイル</button>
-        <button class="dsub-tab" data-tab="settings">⚙ 設定</button>
+        <button class="dsub-tab active" data-tab="jimaku" data-i18n="tabSearch"></button>
+        <button class="dsub-tab" data-tab="local" data-i18n="tabLocal"></button>
+        <button class="dsub-tab" data-tab="settings" data-i18n="tabSettings"></button>
       </div>
 
       <div class="dsub-body">
         <!-- Tab 1: Jimaku.cc Search -->
         <div class="dsub-section active" id="dsub-tab-jimaku">
-          <label class="dsub-row">検索対象
+          <label class="dsub-row"><span data-i18n="searchKindLabel"></span>
             <select class="dsub-select" id="dsub-search-kind" style="width:180px">
-              <option value="anime" ${adapter.defaultSearchKind === 'anime' ? 'selected' : ''}>アニメ</option>
-              <option value="drama" ${adapter.defaultSearchKind === 'drama' ? 'selected' : ''}>ドラマ・実写</option>
+              <option value="anime" data-i18n="kindAnime" ${adapter.defaultSearchKind === 'anime' ? 'selected' : ''}></option>
+              <option value="drama" data-i18n="kindDrama" ${adapter.defaultSearchKind === 'drama' ? 'selected' : ''}></option>
             </select>
           </label>
           <div class="dsub-row">
-            <input type="text" class="dsub-input" id="dsub-search-title" placeholder="作品タイトル (日本語・英語・略称OK)" />
-            <input type="number" class="dsub-input dsub-no-spin" id="dsub-search-ep" placeholder="話数" style="width: 68px;" min="0" />
+            <input type="text" class="dsub-input" id="dsub-search-title" data-i18n-placeholder="searchTitlePlaceholder" />
+            <input type="number" class="dsub-input dsub-no-spin" id="dsub-search-ep" data-i18n-placeholder="searchEpPlaceholder" style="width: 68px;" min="0" />
           </div>
           <div class="dsub-row">
-            <button class="dsub-btn dsub-btn-primary" id="dsub-jimaku-search-btn" style="width: 100%;">
-              ${adapter.autoSearchOnLoad ? 'Jimaku.cc から検索＆最適字幕を適用' : 'Jimaku.cc から字幕を検索'}
-            </button>
+            <button class="dsub-btn dsub-btn-primary" id="dsub-jimaku-search-btn" style="width: 100%;"></button>
           </div>
-          <div class="dsub-status" id="dsub-jimaku-status">
-            ${adapter.autoSearchOnLoad ? '再生中の作品タイトルから自動で日本語字幕(.ass/.srt)を検索・適用します。' : `${adapter.name}: 作品名・話数を確認して検索してください。検出できない場合は手入力できます。`}
-          </div>
+          <div class="dsub-status" id="dsub-jimaku-status" data-default-idle="1"></div>
           <div class="dsub-list" id="dsub-jimaku-results" style="display: none;"></div>
         </div>
 
         <!-- Tab 2: Local File -->
         <div class="dsub-section" id="dsub-tab-local">
           <div class="dsub-dropzone" id="dsub-dropzone">
-            ここに <b>.srt / .ass / .ssa / .vtt</b> ファイルを<br/>ドラッグ＆ドロップ、またはクリックして選択
+            <span data-i18n-html="dropzoneHtml"></span>
             <input type="file" id="dsub-file-input" accept=".srt,.ass,.ssa,.vtt" style="display: none;" />
           </div>
           <div class="dsub-row" style="justify-content: space-between;">
-            <span class="dsub-hint">画面上どこでも字幕ファイルをドロップ可能です</span>
-            <button class="dsub-btn" id="dsub-export-srt-btn" title="現在の字幕をSRT形式で保存">📥 SRT保存</button>
+            <span class="dsub-hint" data-i18n="dropzoneHint"></span>
+            <button class="dsub-btn" id="dsub-export-srt-btn" data-i18n="exportSrtBtn" data-i18n-title="exportSrtTitle"></button>
           </div>
         </div>
 
         <!-- Tab 3: Settings -->
         <div class="dsub-section" id="dsub-tab-settings">
           <div class="dsub-row">
+            <span class="dsub-label" data-i18n="languageLabel"></span>
+            <select class="dsub-select" id="dsub-set-lang" style="width: 165px;">
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+              <option value="zh_CN">简体中文</option>
+            </select>
+          </div>
+          <div class="dsub-row">
             <label class="dsub-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
               <input type="checkbox" id="dsub-set-autoapply" checked />
-              dアニメで動画を開いた時に自動で字幕を検索・適用する
+              <span data-i18n="autoSearchLabel"></span>
             </label>
           </div>
           <div id="dsub-source-accordion-mount"></div>
           <div class="dsub-row">
-            <span class="dsub-label">優先フォーマット</span>
+            <span class="dsub-label" data-i18n="preferredFormatLabel"></span>
             <select class="dsub-select" id="dsub-set-format" style="width: 185px;">
-              <option value="ass,srt,vtt">ASS 優先 (.ass → .srt)</option>
-              <option value="srt,ass,vtt">SRT 優先 (.srt → .ass)</option>
+              <option value="ass,srt,vtt" data-i18n="formatAssFirst"></option>
+              <option value="srt,ass,vtt" data-i18n="formatSrtFirst"></option>
             </select>
           </div>
           <div>
-            <div class="dsub-label" style="margin-bottom: 4px;">Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank" rel="noopener" style="color:#ff7849;">無料取得</a>)</div>
-            <input type="text" autocomplete="off" spellcheck="false" style="-webkit-text-security: disc;" class="dsub-input" id="dsub-set-apikey" placeholder="Jimaku API Key を貼り付け" />
+            <div class="dsub-label" id="dsub-set-apikey-label" style="margin-bottom: 4px;"></div>
+            <input type="text" autocomplete="off" spellcheck="false" style="-webkit-text-security: disc;" class="dsub-input" id="dsub-set-apikey" data-i18n-placeholder="apiKeyPlaceholder" />
           </div>
           <div class="dsub-row">
-            <span class="dsub-label">文字サイズ比率 (<span id="dsub-val-fontsize">4.5</span>%)</span>
+            <span class="dsub-label"><span data-i18n="fontSizeLabel"></span> (<span id="dsub-val-fontsize">4.5</span>%)</span>
             <input type="range" id="dsub-set-fontsize" min="1.5" max="6.5" step="0.1" value="4.5" style="width: 150px;" />
           </div>
           <div class="dsub-row">
-            <span class="dsub-label">下からの位置 (<span id="dsub-val-bottom">5</span>%)</span>
+            <span class="dsub-label"><span data-i18n="bottomPosLabel"></span> (<span id="dsub-val-bottom">5</span>%)</span>
             <input type="range" id="dsub-set-bottom" min="2" max="85" value="5" style="width: 150px;" />
           </div>
           <div class="dsub-row">
-            <span class="dsub-label">背景の不透明度 (<span id="dsub-val-opacity">0% 透明</span>)</span>
+            <span class="dsub-label"><span data-i18n="bgOpacityLabel"></span> (<span id="dsub-val-opacity"></span>)</span>
             <div style="display:flex;align-items:center;gap:6px;">
               <input type="range" id="dsub-set-opacity" min="0" max="100" value="0" style="width: 110px;" />
-              <button class="dsub-btn" id="dsub-transparent-btn" style="padding:3px 6px;font-size:11px;" title="背景を完全透明にする">透明</button>
+              <button class="dsub-btn" id="dsub-transparent-btn" style="padding:3px 6px;font-size:11px;" data-i18n="transparentBtn" data-i18n-title="transparentBtnTitle"></button>
             </div>
           </div>
-          <button class="dsub-btn dsub-btn-primary" id="dsub-save-settings-btn">設定を保存</button>
+          <button class="dsub-btn dsub-btn-primary" id="dsub-save-settings-btn" data-i18n="saveSettingsBtn"></button>
         </div>
       </div>
 
       <!-- Footer: Always-accessible sync offset & visibility toggle -->
       <div class="dsub-footer">
         <div class="dsub-row">
-          <span class="dsub-label">タイミング: <b id="dsub-offset-val">0.0s</b> <small id="dsub-offset-rule" style="color:#ff7849;font-size:10px;"></small></span>
+          <span class="dsub-label"><span data-i18n="offsetLabel"></span>: <b id="dsub-offset-val">0.0s</b> <small id="dsub-offset-rule" style="color:#ff7849;font-size:10px;"></small></span>
           <div class="dsub-offset-controls">
-            <button class="dsub-btn" data-offset="-5" title="OP/提供スキップ調整 (-5秒)">-5s</button>
+            <button class="dsub-btn" data-offset="-5" data-i18n-title="offsetSkipTitle">-5s</button>
             <button class="dsub-btn" data-offset="-0.5">-0.5s</button>
             <button class="dsub-btn" data-offset="-0.1">-0.1s</button>
             <button class="dsub-btn" data-offset="0">0</button>
@@ -496,8 +548,8 @@
           </div>
         </div>
         <div class="dsub-row" style="justify-content: space-between;">
-          <span class="dsub-hint">ショートカット: <b>[</b> / <b>]</b> 0.5秒調整, <b>Alt+S</b> 表示切替</span>
-          <button class="dsub-btn" id="dsub-clear-btn" style="padding: 3px 8px; font-size: 11px;">クリア</button>
+          <span class="dsub-hint" data-i18n-html="shortcutHint"></span>
+          <button class="dsub-btn" id="dsub-clear-btn" style="padding: 3px 8px; font-size: 11px;" data-i18n="clearBtn"></button>
         </div>
       </div>
     `;
@@ -505,37 +557,114 @@
 
     bindPanelEvents();
     syncSettingsToUI();
+    applyLocalizationToUI();
     applyOverlayStyles();
+  }
+
+  function applyLocalizationToUI() {
+    const adapter = getAdapter();
+    if (subBoxEl) {
+      subBoxEl.title = t('overlayTooltip');
+    }
+    if (fabEl) {
+      fabEl.title = t('fabTitle');
+      const labelSpan = fabEl.querySelector('.dsub-fab-label');
+      if (labelSpan) labelSpan.textContent = t('fabLabel');
+      updateBadgeText();
+    }
+    if (panelEl) {
+      panelEl.querySelectorAll('[data-i18n]').forEach((el) => {
+        el.textContent = t(el.dataset.i18n);
+      });
+      panelEl.querySelectorAll('[data-i18n-html]').forEach((el) => {
+        el.innerHTML = t(el.dataset.i18nHtml);
+      });
+      panelEl.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+        el.placeholder = t(el.dataset.i18nPlaceholder);
+      });
+      panelEl.querySelectorAll('[data-i18n-title]').forEach((el) => {
+        el.title = t(el.dataset.i18nTitle);
+      });
+
+      const searchBtn = panelEl.querySelector('#dsub-jimaku-search-btn');
+      if (searchBtn) {
+        searchBtn.textContent = adapter.autoSearchOnLoad ? t('searchBtnAuto') : t('searchBtnManual');
+      }
+      const statusEl = panelEl.querySelector('#dsub-jimaku-status');
+      if (statusEl && statusEl.dataset.defaultIdle === '1') {
+        statusEl.textContent = adapter.autoSearchOnLoad
+          ? t('searchHintAuto')
+          : t('searchHintManual', { platform: adapter.name });
+      }
+      const apiKeyLabel = panelEl.querySelector('#dsub-set-apikey-label');
+      if (apiKeyLabel) {
+        apiKeyLabel.innerHTML = `${t('apiKeyLabelPrefix')} (<a href="https://jimaku.cc/account" target="_blank" rel="noopener" style="color:#ff7849;">${t('apiKeyGetFree')}</a>)`;
+      }
+      const langSelect = panelEl.querySelector('#dsub-set-lang');
+      if (langSelect) {
+        langSelect.value = I18N.normalizeLanguage(state.settings.language);
+      }
+      const opLabel = panelEl.querySelector('#dsub-val-opacity');
+      if (opLabel) {
+        const opPct = Math.round((state.settings.bgOpacity ?? 0) * 100);
+        opLabel.textContent = opPct === 0 ? t('opacityTransparent') : `${opPct}%`;
+      }
+      if (sourceEditor) sourceEditor.refreshLabels();
+      state.offsetRuleLabel = computeOffsetRuleLabel();
+      updateOffsetUI();
+    }
+    if (lyricsEl) {
+      lyricsEl.setAttribute('aria-label', t('lyricsAriaLabel'));
+      const sel = lyricsEl.querySelector('select');
+      if (sel) {
+        sel.setAttribute('aria-label', t('lyricsModeAria'));
+        const optSync = sel.querySelector('option[value="sync"]');
+        const optSeek = sel.querySelector('option[value="seek"]');
+        if (optSync) optSync.textContent = t('lyricsModeSync');
+        if (optSeek) optSeek.textContent = t('lyricsModeSeek');
+        const helpEl = lyricsEl.querySelector('.dsub-lyrics-help');
+        if (helpEl) {
+          helpEl.textContent = sel.value === 'sync' ? t('lyricsHelpSync') : t('lyricsHelpSeek');
+        }
+      }
+      const resetBtn = lyricsEl.querySelector('[data-reset]');
+      if (resetBtn) resetBtn.textContent = t('lyricsResetBtn');
+      const closeBtn = lyricsEl.querySelector('[data-close]');
+      if (closeBtn) closeBtn.setAttribute('aria-label', t('lyricsCloseAria'));
+      if (lyricsListEl) lyricsListEl.setAttribute('aria-label', t('lyricsListAria'));
+    }
   }
 
   function createLyricsPad() {
     lyricsEl = document.createElement('section');
     lyricsEl.id = 'danime-sub-lyrics';
     lyricsEl.hidden = true;
-    lyricsEl.setAttribute('aria-label', '字幕タイミング調整');
+    lyricsEl.setAttribute('aria-label', t('lyricsAriaLabel'));
     lyricsEl.innerHTML = `
       <div class="dsub-lyrics-toolbar">
-        <select aria-label="字幕クリック時の動作">
-          <option value="sync">この台詞を今に合わせる</option>
-          <option value="seek">この台詞へ動画を移動</option>
+        <select aria-label="${t('lyricsModeAria')}">
+          <option value="sync">${t('lyricsModeSync')}</option>
+          <option value="seek">${t('lyricsModeSeek')}</option>
         </select>
-        <button type="button" data-reset>調整リセット</button>
-        <button type="button" data-close aria-label="字幕一覧を閉じる">×</button>
+        <button type="button" data-reset>${t('lyricsResetBtn')}</button>
+        <button type="button" data-close aria-label="${t('lyricsCloseAria')}">×</button>
       </div>
-      <div class="dsub-lyrics-help">前後にスクロールして台詞をクリック。字幕全体のタイミングを調整します。</div>
-      <div class="dsub-lyrics-list" tabindex="0" aria-label="字幕一覧"></div>`;
+      <div class="dsub-lyrics-help">${t('lyricsHelpSync')}</div>
+      <div class="dsub-lyrics-list" tabindex="0" aria-label="${t('lyricsListAria')}"></div>`;
     overlayEl.appendChild(lyricsEl);
     lyricsListEl = lyricsEl.querySelector('.dsub-lyrics-list');
     lyricsEl.querySelector('[data-close]').onclick = () => toggleLyrics(false);
     lyricsEl.querySelector('[data-reset]').onclick = () => {
       state.offsetSec = 0;
+      state.offsetRuleMeta = null;
+      state.offsetRuleLabel = '';
       updateOffsetUI();
       renderCurrentSubtitle();
     };
     lyricsEl.querySelector('select').onchange = (e) => {
       lyricsEl.querySelector('.dsub-lyrics-help').textContent = e.target.value === 'sync'
-        ? '前後にスクロールして台詞をクリック。字幕全体のタイミングを調整します。'
-        : '台詞をクリックすると、調整済みの開始時刻へ動画を移動します。';
+        ? t('lyricsHelpSync')
+        : t('lyricsHelpSeek');
     };
     ['click', 'dblclick', 'mousedown', 'pointerdown', 'wheel', 'keydown', 'keyup'].forEach((type) => {
       lyricsEl.addEventListener(type, (e) => {
@@ -689,6 +818,8 @@
     if (opacityInput) opacityInput.value = opPct;
     if (autoApplyInput) autoApplyInput.checked = Boolean(state.settings.autoSearchApply);
     if (formatInput) formatInput.value = state.settings.preferredFormat || 'ass,srt,vtt';
+    const langInput = panelEl.querySelector('#dsub-set-lang');
+    if (langInput) langInput.value = I18N.normalizeLanguage(state.settings.language);
     if (sourceEditor) sourceEditor.render();
 
     const fsLabel = panelEl.querySelector('#dsub-val-fontsize');
@@ -696,7 +827,7 @@
     const opLabel = panelEl.querySelector('#dsub-val-opacity');
     if (fsLabel) fsLabel.textContent = scale.toFixed(1);
     if (btLabel) btLabel.textContent = state.settings.bottomPosition;
-    if (opLabel) opLabel.textContent = opPct === 0 ? '0% 透明' : `${opPct}%`;
+    if (opLabel) opLabel.textContent = opPct === 0 ? t('opacityTransparent') : `${opPct}%`;
   }
 
   function updateBadge(text) {
@@ -705,10 +836,30 @@
     if (badge) badge.textContent = text;
   }
 
+  function updateBadgeText() {
+    if (state.badgeMeta && state.badgeMeta.type === 'loaded' && state.badgeMeta.label) {
+      updateBadge(
+        t('loadedBadgeCount', {
+          label: state.badgeMeta.label,
+          count: state.badgeMeta.count,
+        })
+      );
+    } else {
+      updateBadge(t('unloadedBadge'));
+    }
+  }
+
   function setCues(cues, label) {
     state.cues = cues || [];
     if (!state.cues.length && lyricsEl && !lyricsEl.hidden) toggleLyrics(false);
-    updateBadge(`${label} (${state.cues.length}行)`);
+    if (label && state.cues.length > 0) {
+      state.badgeMeta = { type: 'loaded', label, count: state.cues.length };
+    } else if (label && label !== '未読込' && label !== t('unloadedBadge')) {
+      state.badgeMeta = { type: 'loaded', label, count: state.cues.length };
+    } else {
+      state.badgeMeta = { type: 'unloaded', label: '', count: 0 };
+    }
+    updateBadgeText();
     renderCurrentSubtitle();
   }
 
@@ -813,7 +964,7 @@
     // Export SRT button
     panelEl.querySelector('#dsub-export-srt-btn').addEventListener('click', () => {
       if (!state.cues.length) {
-        alert('保存する字幕データがありません。');
+        alert(t('alertNoCuesToExport'));
         return;
       }
       const srtText = window.SubtitleParser.toSRT(state.cues);
@@ -830,6 +981,7 @@
     });
 
     // Settings inputs
+    const langInput = panelEl.querySelector('#dsub-set-lang');
     const apiKeyInput = panelEl.querySelector('#dsub-set-apikey');
     const fontSizeInput = panelEl.querySelector('#dsub-set-fontsize');
     const bottomInput = panelEl.querySelector('#dsub-set-bottom');
@@ -838,6 +990,14 @@
     const autoApplyInput = panelEl.querySelector('#dsub-set-autoapply');
     const formatInput = panelEl.querySelector('#dsub-set-format');
     const sourceMountEl = panelEl.querySelector('#dsub-source-accordion-mount');
+
+    if (langInput) {
+      langInput.addEventListener('change', (e) => {
+        const nextLang = I18N.normalizeLanguage(e.target.value);
+        saveSettings({ language: nextLang });
+        applyLocalizationToUI();
+      });
+    }
 
     function persistSourceProfiles(profiles) {
       const normalized = SP.normalizeSourceProfiles(profiles);
@@ -855,6 +1015,7 @@
       onChange: (nextProfiles) => {
         persistSourceProfiles(nextProfiles);
       },
+      getLabels: () => I18N.getSourceDictionaryLabels(state.settings.language),
       startOpen: false,
     });
 
@@ -873,13 +1034,13 @@
     opacityInput.addEventListener('input', (e) => {
       const val = parseInt(e.target.value, 10);
       panelEl.querySelector('#dsub-val-opacity').textContent =
-        val === 0 ? '0% 透明' : `${val}%`;
+        val === 0 ? t('opacityTransparent') : `${val}%`;
       saveSettings({ bgOpacity: val / 100 });
     });
 
     transparentBtn.addEventListener('click', () => {
       opacityInput.value = 0;
-      panelEl.querySelector('#dsub-val-opacity').textContent = '0% 透明';
+      panelEl.querySelector('#dsub-val-opacity').textContent = t('opacityTransparent');
       saveSettings({ bgOpacity: 0.0 });
     });
 
@@ -895,6 +1056,7 @@
       const normalized = SP.normalizeSourceProfiles(state.settings.sourceProfiles);
       const nf = normalized.find((p) => p.id === 'netflix');
       saveSettings({
+        language: I18N.normalizeLanguage(langInput ? langInput.value : state.settings.language),
         jimakuApiKey: apiKeyInput.value.trim(),
         autoSearchApply: autoApplyInput.checked,
         preferredFormat: formatInput.value,
@@ -903,13 +1065,13 @@
         netflixDefaultOffsetSec: nf ? nf.offset : -1.0,
       });
       const btn = panelEl.querySelector('#dsub-save-settings-btn');
-      btn.textContent = '✓ 保存しました';
+      btn.textContent = t('savedSettingsBtn');
       setTimeout(() => {
-        btn.textContent = '設定を保存';
+        btn.textContent = t('saveSettingsBtn');
       }, 1500);
     });
 
-    // Offset buttons -> also persist per anime (& per anime x source)
+    // Offset buttons -> persist per title (& per title x source)
     panelEl.querySelectorAll('[data-offset]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const raw = btn.getAttribute('data-offset');
@@ -926,9 +1088,10 @@
     // Clear button
     panelEl.querySelector('#dsub-clear-btn').addEventListener('click', () => {
       state.cues = [];
+      state.badgeMeta = { type: 'unloaded', label: '', count: 0 };
       subBoxEl.textContent = '';
       toggleLyrics(false);
-      updateBadge('未読込');
+      updateBadgeText();
     });
   }
 
@@ -970,10 +1133,16 @@
     saveSettings({ workEntries: nextEntries });
   }
 
+  function setSearchStatus(text, isIdle = false) {
+    const statusEl = panelEl?.querySelector('#dsub-jimaku-status');
+    if (!statusEl) return;
+    statusEl.dataset.defaultIdle = isIdle ? '1' : '0';
+    statusEl.textContent = text;
+  }
+
   // Jimaku.cc Search & Multi-Entry Auto-load Flow
   async function handleJimakuSearch(options = { autoApplyBest: true }) {
     if (!getAdapter().autoSearchOnLoad) options = { ...options, autoApplyBest: false };
-    const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
     const rawInputTitle = panelEl.querySelector('#dsub-search-title').value.trim();
     const title = rawInputTitle || state.workInfo.cleanTitle || state.workInfo.workTitle;
@@ -981,12 +1150,13 @@
     const episode = epVal ? parseInt(epVal, 10) : state.workInfo.episodeNumber;
 
     if (!title) {
-      statusEl.textContent = '⚠️ 作品のタイトルを入力してください。';
+      setSearchStatus(t('errEnterTitle'));
       return;
     }
 
     const kind = panelEl.querySelector('#dsub-search-kind').value;
-    statusEl.textContent = `🔎 「${title}」を ${kind === 'drama' ? 'Jimaku.cc (実写)' : 'AniList + Jimaku.cc'} で検索中...`;
+    const engine = kind === 'drama' ? t('engineDrama') : t('engineAnime');
+    setSearchStatus(t('statusSearching', { title, engine }));
     listEl.style.display = 'none';
     listEl.innerHTML = '';
 
@@ -999,7 +1169,7 @@
     });
 
     if (!res.ok) {
-      statusEl.textContent = `❌ ${res.error}`;
+      setSearchStatus(`❌ ${formatBgError(res)}`);
       return;
     }
 
@@ -1007,11 +1177,11 @@
     const resolvedMeta = res.resolvedMeta || {};
 
     if (entries.length === 0) {
-      statusEl.textContent = '⚠️ Jimaku.cc に該当作品の字幕が見つかりませんでした。';
+      setSearchStatus(t('errNoEntriesFound'));
       return;
     }
 
-    // Prioritize user's previously chosen Jimaku entry for this anime & season (if not an ambiguous boundary extra)
+    // Prioritize user's previously chosen Jimaku entry for this title & season (if not an ambiguous boundary extra)
     if (kind !== 'drama') {
       const entryKey = getEntryStorageKey(resolvedMeta);
       const savedEntryId = entryKey ? (state.settings.workEntries || {})[entryKey] : null;
@@ -1035,10 +1205,9 @@
 
   /**
    * Check candidate entries in order. If entry[0] has no exact episode match (e.g. Ep 25 on Season 1
-   * when Ep 25 is actually Season 2 Ep 1 in entry[1]), automatically try the next entry!
+   * when Ep 25 is actually Season 2 Ep 1 in entry[1]), automatically try the next entry.
    */
   async function autoPickBestAcrossEntries(entries, episode, resolvedMeta) {
-    const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
     const maxToTry = Math.min(entries.length, 4);
     let firstNonEmpty = null;
@@ -1046,7 +1215,7 @@
     for (let i = 0; i < maxToTry; i++) {
       const entry = entries[i];
       const jpName = entry.japanese_name || entry.name || '';
-      statusEl.textContent = `📂 「${jpName}」の字幕ファイルを確認中...`;
+      setSearchStatus(t('statusCheckingEntry', { name: jpName }));
 
       const res = await sendBgMessage({
         type: 'JIMAKU_FILES',
@@ -1089,16 +1258,15 @@
 
     if (entries.length > 1) {
       renderEntryList(entries, episode, resolvedMeta);
-      statusEl.textContent = `⚠️ 第${episode ?? '?'}話に完全一致するファイルが自動特定できませんでした。フォルダを選択してください：`;
+      setSearchStatus(t('errNoExactEpPickEntry', { ep: episode ?? '?' }));
     } else {
       listEl.style.display = 'none';
-      statusEl.textContent = '⚠️ 対象話数の字幕ファイルが見つかりませんでした。';
+      setSearchStatus(t('errNoEpFilesFound'));
     }
   }
   function renderEntryList(entries, episode, resolvedMeta = {}) {
-    const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
-    statusEl.textContent = `✅ ${entries.length}件の作品が見つかりました。選択してください：`;
+    setSearchStatus(t('statusEntriesFound', { count: entries.length }));
     listEl.style.display = 'flex';
     listEl.innerHTML = '';
     entries.forEach((entry) => {
@@ -1108,7 +1276,7 @@
       const subName = entry.english_name || entry.name || '';
       const display =
         subName && subName !== jpName ? `${jpName} <small style="color:#9ca3af">(${subName})</small>` : jpName;
-      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">📁 ${display}</span><span style="color:#9ca3af;font-size:11px;white-space:nowrap;">選択 ▶</span>`;
+      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">📁 ${display}</span><span style="color:#9ca3af;font-size:11px;white-space:nowrap;">${t('entrySelectBtn')}</span>`;
       item.addEventListener('click', () => {
         saveSelectedEntry(entry, resolvedMeta);
         loadJimakuEntryFiles(entry, episode, getAdapter().autoSearchOnLoad, entries, resolvedMeta);
@@ -1127,7 +1295,7 @@
       switchBar.className = 'dsub-list-item';
       switchBar.style.color = '#9ca3af';
       switchBar.style.fontSize = '11px';
-      switchBar.innerHTML = `<span>📁 ${entry.japanese_name || entry.name}</span><span style="color:#ff7849;">別候補(${allEntries.length})へ ↩</span>`;
+      switchBar.innerHTML = `<span>📁 ${entry.japanese_name || entry.name}</span><span style="color:#ff7849;">${t('switchCandidateBtn', { count: allEntries.length })}</span>`;
       switchBar.addEventListener('click', () => renderEntryList(allEntries, episode, resolvedMeta));
       listEl.appendChild(switchBar);
     }
@@ -1140,7 +1308,7 @@
         item.style.borderLeft = '3px solid #ff7849';
       }
       const badgeTag = file._partTitleMatched ? '🎯 ' : idx === 0 ? '★ ' : '';
-      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;" title="${file.name}">${badgeTag}${file.name}</span><span style="color:#ff7849;font-size:11px;white-space:nowrap;">読込</span>`;
+      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;" title="${file.name}">${badgeTag}${file.name}</span><span style="color:#ff7849;font-size:11px;white-space:nowrap;">${t('fileLoadBtn')}</span>`;
       item.addEventListener('click', () => {
         listEl.querySelectorAll('.dsub-list-item').forEach((el) => {
           el.style.background = '';
@@ -1162,11 +1330,10 @@
     allEntries = [],
     resolvedMeta = {}
   ) {
-    const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
     const jpName = entry.japanese_name || entry.name || '';
 
-    statusEl.textContent = `📂 「${jpName}」の字幕ファイル一覧を取得中...`;
+    setSearchStatus(t('statusFetchingFiles', { name: jpName }));
     listEl.innerHTML = '';
     listEl.style.display = 'none';
 
@@ -1188,13 +1355,13 @@
     });
 
     if (!res.ok) {
-      statusEl.textContent = `❌ ${res.error}`;
+      setSearchStatus(`❌ ${formatBgError(res)}`);
       return;
     }
 
     const files = res.files || [];
     if (files.length === 0) {
-      statusEl.textContent = '⚠️ 対象話数の字幕ファイルが見つかりませんでした。';
+      setSearchStatus(t('errNoEpFilesFound'));
       if (allEntries.length > 1) {
         renderEntryList(allEntries, episode, resolvedMeta);
       }
@@ -1206,13 +1373,12 @@
     if (autoApplyBest && files.length > 0) {
       await downloadAndApplyJimakuFile(files[0]);
     } else {
-      statusEl.textContent = `📄 字幕ファイルを選択してください (${files.length}件):`;
+      setSearchStatus(t('statusChooseFile', { count: files.length }));
     }
   }
 
   async function downloadAndApplyJimakuFile(file) {
-    const statusEl = panelEl.querySelector('#dsub-jimaku-status');
-    statusEl.textContent = `⬇️ 「${file.name}」を自動適用中...`;
+    setSearchStatus(t('statusDownloading', { name: file.name }));
 
     const res = await sendBgMessage({
       type: 'JIMAKU_DOWNLOAD',
@@ -1220,7 +1386,7 @@
     });
 
     if (!res.ok) {
-      statusEl.textContent = `❌ ${res.error}`;
+      setSearchStatus(`❌ ${formatBgError(res)}`);
       return;
     }
 
@@ -1229,7 +1395,7 @@
 
     const cues = window.SubtitleParser.parseSubtitles(res.text, file.name);
     setCues(cues, 'Jimaku');
-    statusEl.textContent = `✅ 適用完了: ${file.name} (${cues.length}行)`;
+    setSearchStatus(t('statusApplied', { name: file.name, count: cues.length }));
   }
 
   // Render active subtitle cue for current video time
@@ -1348,12 +1514,19 @@
           dirty = true;
         }
       }
+      if (Object.prototype.hasOwnProperty.call(changes, 'language')) {
+        state.settings.language = changes.language.newValue
+          ? I18N.normalizeLanguage(changes.language.newValue)
+          : I18N.detectDefaultLanguage();
+        dirty = true;
+      }
       if (Object.prototype.hasOwnProperty.call(changes, 'sourceProfiles')) {
         state.settings.sourceProfiles = SP.normalizeSourceProfiles(changes.sourceProfiles.newValue);
         dirty = true;
       }
       if (dirty) {
         syncSettingsToUI();
+        applyLocalizationToUI();
         applyOverlayStyles();
       }
     });
@@ -1361,8 +1534,9 @@
 
   function resetPrimeEpisode() {
     mediaGeneration++;
-    setCues([], '未読込');
+    setCues([], null);
     state.offsetSec = 0;
+    state.offsetRuleMeta = null;
     state.offsetRuleLabel = '';
     state.currentSourceCategory = '';
     updateOffsetUI();
@@ -1373,6 +1547,13 @@
       delete input.dataset.userEdited;
     }
     panelEl.querySelector('#dsub-jimaku-results').replaceChildren();
+    const adapter = getAdapter();
+    setSearchStatus(
+      adapter.autoSearchOnLoad
+        ? t('searchHintAuto')
+        : t('searchHintManual', { platform: adapter.name }),
+      true
+    );
   }
 
   // Main initialization loop
