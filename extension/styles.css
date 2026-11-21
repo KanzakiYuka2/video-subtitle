@@ -1,9 +1,9 @@
-/* dアニメ字幕アシスタント - オーバーレイ & パネルスタイル */
+/* Subtitle overlay and control panel styles */
 
 #danime-sub-overlay {
   position: fixed;
   left: 50%;
-  bottom: 10%;
+  bottom: 5%;
   transform: translateX(-50%);
   z-index: 2147483645;
   pointer-events: none;
@@ -467,4 +467,212 @@
 
 #danime-sub-panel.dsub-prime > * {
   flex-shrink: 0;
+}
+
+/* Hide number input spinners on episode input and compact numeric controls */
+#dsub-search-ep::-webkit-outer-spin-button,
+#dsub-search-ep::-webkit-inner-spin-button,
+.dsub-no-spin::-webkit-outer-spin-button,
+.dsub-no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#dsub-search-ep,
+.dsub-no-spin {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Expandable & draggable source priority + default offset dictionary */
+.dsub-source-accordion {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+}
+
+.dsub-source-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  color: #f3f4f6;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.dsub-source-toggle:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.dsub-source-chevron {
+  font-size: 10px;
+  color: #9ca3af;
+  transition: transform 0.15s ease;
+}
+
+.dsub-source-accordion.open .dsub-source-chevron {
+  transform: rotate(180deg);
+}
+
+.dsub-source-summary {
+  padding: 4px 10px 6px;
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dsub-source-accordion.open .dsub-source-summary {
+  display: none;
+}
+
+.dsub-source-body {
+  display: none;
+  padding: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dsub-source-accordion.open .dsub-source-body {
+  display: flex;
+}
+
+.dsub-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.dsub-source-row {
+  display: grid;
+  grid-template-columns: 16px 22px minmax(0, 1fr) 74px 22px;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: grab;
+  user-select: none;
+}
+
+.dsub-source-row.dragging {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.dsub-source-row.drag-over {
+  border-color: #ff7849;
+  background: rgba(235, 85, 40, 0.18);
+}
+
+.dsub-source-row.is-other {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.dsub-source-grip {
+  color: #9ca3af;
+  font-size: 12px;
+  text-align: center;
+  cursor: grab;
+}
+
+.dsub-source-rank {
+  font-size: 10px;
+  font-weight: 700;
+  color: #ff7849;
+  text-align: center;
+  background: rgba(235, 85, 40, 0.16);
+  border-radius: 4px;
+  padding: 2px 0;
+}
+
+.dsub-source-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f3f4f6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsub-source-offset-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+
+.dsub-source-offset-input {
+  width: 54px !important;
+  padding: 3px 5px !important;
+  font-size: 11px !important;
+  text-align: right;
+}
+
+.dsub-source-offset-unit {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.dsub-source-lock-pill {
+  font-size: 10px;
+  color: #9ca3af;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 2px 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.dsub-source-del-btn {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.dsub-source-del-btn:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.14);
+}
+
+.dsub-source-lock-icon {
+  font-size: 11px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.dsub-source-add-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.dsub-source-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #9ca3af;
 }

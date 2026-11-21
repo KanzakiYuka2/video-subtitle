@@ -1,20 +1,38 @@
-const SOURCE_PRIORITY_PRESETS = {
-  platinum_other: 'ABEMA,DMMTV,U-NEXT,Amazon,Other,Netflix,NanokoRaws,shincaps',
-  standard_tiers: 'ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,Other',
-};
-
 document.addEventListener('DOMContentLoaded', () => {
+  const SP = window.DSubSourceProfiles;
   const apiKeyEl = document.getElementById('apiKey');
-  const sourceModeEl = document.getElementById('sourcePriorityMode');
-  const nfOffsetEl = document.getElementById('netflixDefaultOffsetSec');
+  const sourceMountEl = document.getElementById('popup-source-mount');
   const saveBtn = document.getElementById('saveBtn');
   const toggleBtn = document.getElementById('togglePanelBtn');
+
+  let currentProfiles = SP.cloneDefaultProfiles();
+  let sourceEditor = null;
+
+  function persistProfiles(profiles) {
+    currentProfiles = SP.normalizeSourceProfiles(profiles);
+    const nfProfile = currentProfiles.find((p) => p.id === 'netflix');
+    chrome.storage.local.set({
+      sourceProfiles: currentProfiles,
+      preferredSource: currentProfiles.map((p) => p.name).join(','),
+      netflixDefaultOffsetSec: nfProfile ? nfProfile.offset : -1.0,
+      netflixOffsetMigratedV1: true,
+    });
+  }
+
+  sourceEditor = SP.mountSourceDictionary({
+    container: sourceMountEl,
+    getProfiles: () => currentProfiles,
+    onChange: (next) => {
+      persistProfiles(next);
+    },
+    startOpen: false,
+  });
 
   chrome.storage.local.get(
     {
       jimakuApiKey: '',
-      sourcePriorityMode: 'platinum_other',
-      preferredSource: SOURCE_PRIORITY_PRESETS.platinum_other,
+      sourceProfiles: null,
+      preferredSource: SP.DEFAULT_PREFERRED_SOURCE,
       netflixDefaultOffsetSec: -1.0,
       netflixOffsetMigratedV1: false,
     },
@@ -29,32 +47,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
       apiKeyEl.value = items.jimakuApiKey || '';
-      sourceModeEl.value = items.sourcePriorityMode || 'platinum_other';
-      nfOffsetEl.value = Number(items.netflixDefaultOffsetSec ?? -1.0).toFixed(1);
+      currentProfiles = SP.normalizeSourceProfiles(
+        items.sourceProfiles,
+        items.preferredSource,
+        items.netflixDefaultOffsetSec
+      );
+      if (!Array.isArray(items.sourceProfiles) || items.sourceProfiles.length === 0) {
+        chrome.storage.local.set({
+          sourceProfiles: currentProfiles,
+          preferredSource: currentProfiles.map((p) => p.name).join(','),
+        });
+      }
+      sourceEditor.render();
     }
   );
 
   saveBtn.addEventListener('click', () => {
-    const mode = sourceModeEl.value;
-    const nfOff = Number.isFinite(nfOffsetEl.valueAsNumber)
-      ? nfOffsetEl.valueAsNumber
-      : parseFloat(nfOffsetEl.value);
-    const payload = {
-      jimakuApiKey: apiKeyEl.value.trim(),
-      sourcePriorityMode: mode,
-      netflixDefaultOffsetSec: Number.isFinite(nfOff) ? Math.round(nfOff * 10) / 10 : -1.0,
-      netflixOffsetMigratedV1: true,
-    };
-    if (SOURCE_PRIORITY_PRESETS[mode]) {
-      payload.preferredSource = SOURCE_PRIORITY_PRESETS[mode];
-    }
-
-    chrome.storage.local.set(payload, () => {
-      saveBtn.textContent = '✓ 保存しました';
-      setTimeout(() => {
-        saveBtn.textContent = '設定を保存';
-      }, 1200);
-    });
+    const normalized = SP.normalizeSourceProfiles(currentProfiles);
+    const nfProfile = normalized.find((p) => p.id === 'netflix');
+    chrome.storage.local.set(
+      {
+        jimakuApiKey: apiKeyEl.value.trim(),
+        sourceProfiles: normalized,
+        preferredSource: normalized.map((p) => p.name).join(','),
+        netflixDefaultOffsetSec: nfProfile ? nfProfile.offset : -1.0,
+        netflixOffsetMigratedV1: true,
+      },
+      () => {
+        saveBtn.textContent = '✓ 保存しました';
+        setTimeout(() => {
+          saveBtn.textContent = '設定を保存';
+        }, 1200);
+      }
+    );
   });
 
   toggleBtn.addEventListener('click', () => {

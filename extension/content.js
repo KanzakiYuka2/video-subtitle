@@ -1,12 +1,12 @@
 /**
- * Content Script for dアニメ字幕アシスタント
+ * Content Script for Multi-Platform Video Subtitle Overlay Assistant
+ * - Delegates site detection, video resolution, and metadata extraction to registered player adapters
  * - Stops keyboard event propagation when panel inputs are focused or panel is open
- *   so d-anime player shortcuts (Space, Arrow keys, F, M, Enter, etc.) never hijack typing!
- * - Detects d-anime work title, episode number, and episode subtitle (partTitle) via WS010105 API & DOM
- * - Automatically searches & applies best matching subtitle on page entry / episode change
+ *   so player shortcuts (Space, Arrow keys, F, M, Enter, etc.) never hijack typing
+ * - Automatically searches & applies best matching subtitles on supported platforms
  *   with multi-entry fallback and AniList franchise/split-cour episode resolution
- * - Supports source priority presets (Platinum -> Other vs standard tiers) & format priority (ASS vs SRT)
- * - Supports per-anime (& per-anime x source) offset memory + global Netflix default auto-offset
+ * - Supports a 1-to-1 ordered source priority & default offset dictionary (`Other` locked to 0.0s)
+ * - Supports per-title (& per-title x source) offset memory and saved subtitle entry memory
  * - Supports responsive font scaling relative to video/viewport height & transparent subtitle background
  */
 
@@ -37,18 +37,14 @@
     };
   let mediaGeneration = 0;
 
-  const SOURCE_PRIORITY_PRESETS = {
-    platinum_other: 'ABEMA,DMMTV,U-NEXT,Amazon,Other,Netflix,NanokoRaws,shincaps',
-    standard_tiers: 'ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,Other',
-  };
+  const SP = window.DSubSourceProfiles;
+  let sourceEditor = null;
 
   const LEGACY_DEFAULT_SOURCES = new Set([
     'Netflix,ABEMA,WebRip,BD',
     'Netflix,ABEMA,DMMTV,Prime,U-NEXT,WebRip,BD',
     'ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,WebRip,BD',
   ]);
-
-  const NEW_DEFAULT_SOURCE = SOURCE_PRIORITY_PRESETS.platinum_other;
 
   // State
   const state = {
@@ -69,14 +65,14 @@
     },
     settings: {
       jimakuApiKey: '',
-      fontScale: 3.2,
-      bottomPosition: 10,
+      fontScale: 4.5,
+      bottomPosition: 5,
       bgOpacity: 0.0,
       textColor: '#ffffff',
       autoSearchApply: true,
       preferredFormat: 'ass,srt,vtt',
-      sourcePriorityMode: 'platinum_other',
-      preferredSource: NEW_DEFAULT_SOURCE,
+      sourceProfiles: SP.cloneDefaultProfiles(),
+      preferredSource: SP.DEFAULT_PREFERRED_SOURCE,
       netflixDefaultOffsetSec: -1.0,
       workOffsets: {}, // { [workKey]: number, [`${workKey}::${sourceCat}`]: number }
       workEntries: {}, // { [`${workKey}::s${season}`]: entryId }
@@ -125,15 +121,7 @@
   }
 
   function detectSourceCategoryFromName(filename) {
-    const lower = (filename || '').toLowerCase();
-    if (lower.includes('abema')) return 'abema';
-    if (lower.includes('dmmtv') || lower.includes('dmm')) return 'dmmtv';
-    if (lower.includes('u-next') || lower.includes('unext')) return 'u-next';
-    if (lower.includes('amazon') || lower.includes('amzn') || lower.includes('prime')) return 'amazon';
-    if (lower.includes('netflix') || lower.includes('.nf.') || lower.includes('[nf]')) return 'netflix';
-    if (lower.includes('nanokoraws') || lower.includes('nanakoraws')) return 'nanokoraws';
-    if (lower.includes('shincaps')) return 'shincaps';
-    return 'other';
+    return SP.detectSourceCategory(filename, state.settings.sourceProfiles);
   }
 
   function getWorkStorageKey() {
@@ -149,26 +137,52 @@
   function loadSettings() {
     return new Promise((resolve) => {
       chrome.storage.local.get(
-        { ...state.settings, netflixOffsetMigratedV1: false },
+        {
+          ...state.settings,
+          sourceProfiles: null,
+          netflixOffsetMigratedV1: false,
+          styleDefaultsMigratedV2: false,
+        },
         (items) => {
+          const updates = {};
           if (!items.preferredSource || LEGACY_DEFAULT_SOURCES.has(items.preferredSource)) {
-            items.preferredSource = NEW_DEFAULT_SOURCE;
-            items.sourcePriorityMode = 'platinum_other';
-            chrome.storage.local.set({
-              preferredSource: NEW_DEFAULT_SOURCE,
-              sourcePriorityMode: 'platinum_other',
-            });
+            items.preferredSource = SP.DEFAULT_PREFERRED_SOURCE;
+            updates.preferredSource = items.preferredSource;
           }
           if (!items.netflixOffsetMigratedV1) {
             if (Number(items.netflixDefaultOffsetSec) === 0) {
               items.netflixDefaultOffsetSec = -1.0;
             }
-            chrome.storage.local.set({
-              netflixDefaultOffsetSec: items.netflixDefaultOffsetSec,
-              netflixOffsetMigratedV1: true,
-            });
+            updates.netflixDefaultOffsetSec = items.netflixDefaultOffsetSec;
+            updates.netflixOffsetMigratedV1 = true;
           }
+          if (!items.styleDefaultsMigratedV2) {
+            if (Number(items.fontScale) === 3.2) items.fontScale = 4.5;
+            if (Number(items.bottomPosition) === 10) items.bottomPosition = 5;
+            updates.fontScale = items.fontScale;
+            updates.bottomPosition = items.bottomPosition;
+            updates.bgOpacity = items.bgOpacity ?? 0.0;
+            updates.styleDefaultsMigratedV2 = true;
+          }
+          const hadProfiles = Array.isArray(items.sourceProfiles) && items.sourceProfiles.length > 0;
+          items.sourceProfiles = SP.normalizeSourceProfiles(
+            items.sourceProfiles,
+            items.preferredSource,
+            items.netflixDefaultOffsetSec
+          );
+          items.preferredSource = items.sourceProfiles.map((p) => p.name).join(',');
+          const nfProfile = items.sourceProfiles.find((p) => p.id === 'netflix');
+          items.netflixDefaultOffsetSec = nfProfile ? nfProfile.offset : -1.0;
+          if (!hadProfiles) {
+            updates.sourceProfiles = items.sourceProfiles;
+            updates.preferredSource = items.preferredSource;
+          }
+          if (Object.keys(updates).length > 0) {
+            chrome.storage.local.set(updates);
+          }
+
           delete items.netflixOffsetMigratedV1;
+          delete items.styleDefaultsMigratedV2;
           items.workOffsets = items.workOffsets && typeof items.workOffsets === 'object' ? items.workOffsets : {};
           items.workEntries = items.workEntries && typeof items.workEntries === 'object' ? items.workEntries : {};
           Object.assign(state.settings, items);
@@ -294,9 +308,13 @@
     } else if (workKey && Object.prototype.hasOwnProperty.call(offsets, workKey)) {
       nextOffset = Number(offsets[workKey]) || 0.0;
       ruleLabel = '作品記憶';
-    } else if (sourceCategory === 'netflix' && Number(state.settings.netflixDefaultOffsetSec) !== 0) {
-      nextOffset = Number(state.settings.netflixDefaultOffsetSec) || 0.0;
-      ruleLabel = 'Netflix標準';
+    } else if (sourceCategory && sourceCategory !== 'other') {
+      const profiles = SP.normalizeSourceProfiles(state.settings.sourceProfiles);
+      const matchedProfile = profiles.find((p) => p.id === sourceCategory);
+      if (matchedProfile && !matchedProfile.locked && Number(matchedProfile.offset) !== 0) {
+        nextOffset = Number(matchedProfile.offset) || 0.0;
+        ruleLabel = `${matchedProfile.name}標準`;
+      }
     }
 
     state.offsetSec = Math.round(nextOffset * 10) / 10;
@@ -399,7 +417,7 @@
           </label>
           <div class="dsub-row">
             <input type="text" class="dsub-input" id="dsub-search-title" placeholder="作品タイトル (日本語・英語・略称OK)" />
-            <input type="number" class="dsub-input" id="dsub-search-ep" placeholder="話数" style="width: 68px;" min="0" />
+            <input type="number" class="dsub-input dsub-no-spin" id="dsub-search-ep" placeholder="話数" style="width: 68px;" min="0" />
           </div>
           <div class="dsub-row">
             <button class="dsub-btn dsub-btn-primary" id="dsub-jimaku-search-btn" style="width: 100%;">
@@ -432,18 +450,7 @@
               dアニメで動画を開いた時に自動で字幕を検索・適用する
             </label>
           </div>
-          <div class="dsub-row">
-            <span class="dsub-label">ソース優先モード</span>
-            <select class="dsub-select" id="dsub-set-sourcemode" style="width: 210px;">
-              <option value="platinum_other">Platinumの次にOtherを優先 (推奨)</option>
-              <option value="standard_tiers">標準ティア順 (Platinum→Gold→Silver→Bronze)</option>
-              <option value="custom">カスタム順 (下で指定)</option>
-            </select>
-          </div>
-          <div>
-            <div class="dsub-label" style="margin-bottom: 4px;">優先ソース順 (カンマ区切り・左ほど優先)</div>
-            <input type="text" class="dsub-input" id="dsub-set-source" placeholder="ABEMA,DMMTV,U-NEXT,Amazon,Other,Netflix,NanokoRaws,shincaps" />
-          </div>
+          <div id="dsub-source-accordion-mount"></div>
           <div class="dsub-row">
             <span class="dsub-label">優先フォーマット</span>
             <select class="dsub-select" id="dsub-set-format" style="width: 185px;">
@@ -451,21 +458,17 @@
               <option value="srt,ass,vtt">SRT 優先 (.srt → .ass)</option>
             </select>
           </div>
-          <div class="dsub-row">
-            <span class="dsub-label" title="作品別の調整が未保存のとき、Netflix字幕に自動で掛ける基準オフセット">Netflix標準オフセット (秒)</span>
-            <input type="number" class="dsub-input" id="dsub-set-nfoffset" step="0.5" value="-1.0" style="width: 82px;" />
-          </div>
           <div>
             <div class="dsub-label" style="margin-bottom: 4px;">Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank" rel="noopener" style="color:#ff7849;">無料取得</a>)</div>
             <input type="text" autocomplete="off" spellcheck="false" style="-webkit-text-security: disc;" class="dsub-input" id="dsub-set-apikey" placeholder="Jimaku API Key を貼り付け" />
           </div>
           <div class="dsub-row">
-            <span class="dsub-label">文字サイズ比率 (<span id="dsub-val-fontsize">3.2</span>%)</span>
-            <input type="range" id="dsub-set-fontsize" min="1.5" max="6.5" step="0.1" value="3.2" style="width: 150px;" />
+            <span class="dsub-label">文字サイズ比率 (<span id="dsub-val-fontsize">4.5</span>%)</span>
+            <input type="range" id="dsub-set-fontsize" min="1.5" max="6.5" step="0.1" value="4.5" style="width: 150px;" />
           </div>
           <div class="dsub-row">
-            <span class="dsub-label">下からの位置 (<span id="dsub-val-bottom">10</span>%)</span>
-            <input type="range" id="dsub-set-bottom" min="2" max="85" value="10" style="width: 150px;" />
+            <span class="dsub-label">下からの位置 (<span id="dsub-val-bottom">5</span>%)</span>
+            <input type="range" id="dsub-set-bottom" min="2" max="85" value="5" style="width: 150px;" />
           </div>
           <div class="dsub-row">
             <span class="dsub-label">背景の不透明度 (<span id="dsub-val-opacity">0% 透明</span>)</span>
@@ -641,7 +644,7 @@
   }
 
   function computeResponsiveFontSizePx() {
-    const scale = Number(state.settings.fontScale) || 3.2;
+    const scale = Number(state.settings.fontScale) || 4.5;
     const v = currentVideo || player.getVideo();
     let baseHeight = window.innerHeight;
     if (v) {
@@ -676,11 +679,8 @@
     const opacityInput = panelEl.querySelector('#dsub-set-opacity');
     const autoApplyInput = panelEl.querySelector('#dsub-set-autoapply');
     const formatInput = panelEl.querySelector('#dsub-set-format');
-    const sourceModeInput = panelEl.querySelector('#dsub-set-sourcemode');
-    const sourceInput = panelEl.querySelector('#dsub-set-source');
-    const nfOffsetInput = panelEl.querySelector('#dsub-set-nfoffset');
 
-    const scale = Number(state.settings.fontScale) || 3.2;
+    const scale = Number(state.settings.fontScale) || 4.5;
     if (apiKeyInput) apiKeyInput.value = state.settings.jimakuApiKey || '';
     if (fontSizeInput) fontSizeInput.value = scale;
     if (bottomInput) bottomInput.value = state.settings.bottomPosition;
@@ -689,9 +689,7 @@
     if (opacityInput) opacityInput.value = opPct;
     if (autoApplyInput) autoApplyInput.checked = Boolean(state.settings.autoSearchApply);
     if (formatInput) formatInput.value = state.settings.preferredFormat || 'ass,srt,vtt';
-    if (sourceModeInput) sourceModeInput.value = state.settings.sourcePriorityMode || 'platinum_other';
-    if (sourceInput) sourceInput.value = state.settings.preferredSource || NEW_DEFAULT_SOURCE;
-    if (nfOffsetInput) nfOffsetInput.value = Number(state.settings.netflixDefaultOffsetSec ?? -1.0).toFixed(1);
+    if (sourceEditor) sourceEditor.render();
 
     const fsLabel = panelEl.querySelector('#dsub-val-fontsize');
     const btLabel = panelEl.querySelector('#dsub-val-bottom');
@@ -839,23 +837,25 @@
     const transparentBtn = panelEl.querySelector('#dsub-transparent-btn');
     const autoApplyInput = panelEl.querySelector('#dsub-set-autoapply');
     const formatInput = panelEl.querySelector('#dsub-set-format');
-    const sourceModeInput = panelEl.querySelector('#dsub-set-sourcemode');
-    const sourceInput = panelEl.querySelector('#dsub-set-source');
-    const nfOffsetInput = panelEl.querySelector('#dsub-set-nfoffset');
+    const sourceMountEl = panelEl.querySelector('#dsub-source-accordion-mount');
 
-    sourceModeInput.addEventListener('change', (e) => {
-      const mode = e.target.value;
-      if (SOURCE_PRIORITY_PRESETS[mode]) {
-        const preset = SOURCE_PRIORITY_PRESETS[mode];
-        sourceInput.value = preset;
-        saveSettings({ sourcePriorityMode: mode, preferredSource: preset });
-      } else {
-        saveSettings({ sourcePriorityMode: 'custom' });
-      }
-    });
+    function persistSourceProfiles(profiles) {
+      const normalized = SP.normalizeSourceProfiles(profiles);
+      const nf = normalized.find((p) => p.id === 'netflix');
+      saveSettings({
+        sourceProfiles: normalized,
+        preferredSource: normalized.map((p) => p.name).join(','),
+        netflixDefaultOffsetSec: nf ? nf.offset : -1.0,
+      });
+    }
 
-    sourceInput.addEventListener('input', () => {
-      sourceModeInput.value = 'custom';
+    sourceEditor = SP.mountSourceDictionary({
+      container: sourceMountEl,
+      getProfiles: () => state.settings.sourceProfiles,
+      onChange: (nextProfiles) => {
+        persistSourceProfiles(nextProfiles);
+      },
+      startOpen: false,
     });
 
     fontSizeInput.addEventListener('input', (e) => {
@@ -892,18 +892,15 @@
     });
 
     panelEl.querySelector('#dsub-save-settings-btn').addEventListener('click', () => {
-      const mode = sourceModeInput.value;
-      const srcStr = sourceInput.value.trim() || NEW_DEFAULT_SOURCE;
-      const nfOff = Number.isFinite(nfOffsetInput.valueAsNumber)
-        ? nfOffsetInput.valueAsNumber
-        : parseFloat(nfOffsetInput.value);
+      const normalized = SP.normalizeSourceProfiles(state.settings.sourceProfiles);
+      const nf = normalized.find((p) => p.id === 'netflix');
       saveSettings({
         jimakuApiKey: apiKeyInput.value.trim(),
         autoSearchApply: autoApplyInput.checked,
         preferredFormat: formatInput.value,
-        sourcePriorityMode: mode,
-        preferredSource: srcStr,
-        netflixDefaultOffsetSec: Number.isFinite(nfOff) ? Math.round(nfOff * 10) / 10 : -1.0,
+        sourceProfiles: normalized,
+        preferredSource: normalized.map((p) => p.name).join(','),
+        netflixDefaultOffsetSec: nf ? nf.offset : -1.0,
       });
       const btn = panelEl.querySelector('#dsub-save-settings-btn');
       btn.textContent = '✓ 保存しました';
@@ -1058,6 +1055,7 @@
         apiKey: state.settings.jimakuApiKey,
         preferredFormat: state.settings.preferredFormat,
         preferredSource: state.settings.preferredSource,
+        sourceProfiles: state.settings.sourceProfiles,
         extraMeta: {
           ...resolvedMeta,
           entryAnilistId: entry.anilist_id || null,
@@ -1179,6 +1177,7 @@
       apiKey: state.settings.jimakuApiKey,
       preferredFormat: state.settings.preferredFormat,
       preferredSource: state.settings.preferredSource,
+      sourceProfiles: state.settings.sourceProfiles,
       extraMeta: {
         ...resolvedMeta,
         entryAnilistId: entry.anilist_id || null,
@@ -1328,6 +1327,37 @@
       sendResponse({ ok: true });
     }
   });
+
+  if (chrome?.storage?.onChanged?.addListener) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== 'local') return;
+      let dirty = false;
+      const syncKeys = [
+        'jimakuApiKey',
+        'fontScale',
+        'bottomPosition',
+        'bgOpacity',
+        'autoSearchApply',
+        'preferredFormat',
+        'preferredSource',
+        'netflixDefaultOffsetSec',
+      ];
+      for (const k of syncKeys) {
+        if (Object.prototype.hasOwnProperty.call(changes, k)) {
+          state.settings[k] = changes[k].newValue;
+          dirty = true;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(changes, 'sourceProfiles')) {
+        state.settings.sourceProfiles = SP.normalizeSourceProfiles(changes.sourceProfiles.newValue);
+        dirty = true;
+      }
+      if (dirty) {
+        syncSettingsToUI();
+        applyOverlayStyles();
+      }
+    });
+  }
 
   function resetPrimeEpisode() {
     mediaGeneration++;

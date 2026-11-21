@@ -8,12 +8,80 @@
 const JIMAKU_BASE = 'https://jimaku.cc/api';
 const ANILIST_URL = 'https://graphql.anilist.co';
 
-const SOURCE_PRIORITY_PRESETS = {
-  platinum_other: 'ABEMA,DMMTV,U-NEXT,Amazon,Other,Netflix,NanokoRaws,shincaps',
-  standard_tiers: 'ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,Other',
-};
+const DEFAULT_SOURCE_PROFILES = [
+  { id: 'abema', name: 'ABEMA', offset: 0.0, locked: false },
+  { id: 'dmmtv', name: 'DMMTV', offset: 0.0, locked: false },
+  { id: 'u-next', name: 'U-NEXT', offset: 0.0, locked: false },
+  { id: 'amazon', name: 'Amazon', offset: 0.0, locked: false },
+  { id: 'other', name: 'Other', offset: 0.0, locked: true },
+  { id: 'netflix', name: 'Netflix', offset: -1.0, locked: false },
+  { id: 'nanokoraws', name: 'NanokoRaws', offset: 0.0, locked: false },
+  { id: 'shincaps', name: 'shincaps', offset: 0.0, locked: false },
+];
 
-const DEFAULT_PREFERRED_SOURCE = SOURCE_PRIORITY_PRESETS.platinum_other;
+const DEFAULT_PREFERRED_SOURCE = DEFAULT_SOURCE_PROFILES.map((p) => p.name).join(',');
+
+function normalizeSourceProfiles(profiles, legacyPreferredSource, legacyNetflixOffset) {
+  const nfDefault = Number.isFinite(Number(legacyNetflixOffset)) ? Number(legacyNetflixOffset) : -1.0;
+
+  let list = [];
+  if (Array.isArray(profiles) && profiles.length > 0) {
+    list = profiles
+      .filter((p) => p && (p.id || p.name))
+      .map((p) => {
+        const rawId = String(p.id || p.name).trim().toLowerCase();
+        const isOther = rawId === 'other' || rawId === 'その他';
+        const id = isOther ? 'other' : rawId;
+        const name = isOther ? 'Other' : String(p.name || p.id).trim();
+        const off = isOther ? 0.0 : (Number.isFinite(Number(p.offset)) ? Math.round(Number(p.offset) * 10) / 10 : 0.0);
+        return { id, name, offset: off, locked: isOther };
+      });
+  } else if (typeof legacyPreferredSource === 'string' && legacyPreferredSource.trim()) {
+    const tokens = legacyPreferredSource
+      .split(/[,、\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const seen = new Set();
+    for (const tok of tokens) {
+      const lower = tok.toLowerCase();
+      const id = lower === 'その他' ? 'other' : lower;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const isOther = id === 'other';
+      const defaultMatch = DEFAULT_SOURCE_PROFILES.find((d) => d.id === id);
+      list.push({
+        id,
+        name: isOther ? 'Other' : (defaultMatch ? defaultMatch.name : tok),
+        offset: isOther ? 0.0 : (id === 'netflix' ? nfDefault : 0.0),
+        locked: isOther,
+      });
+    }
+  } else {
+    list = DEFAULT_SOURCE_PROFILES.map((p) => ({
+      ...p,
+      offset: p.id === 'netflix' ? nfDefault : p.offset,
+    }));
+  }
+
+  // Ensure unique IDs and ensure `Other` is always present, locked, and offset 0.0
+  const deduped = [];
+  const seenIds = new Set();
+  let hasOther = false;
+  for (const item of list) {
+    if (!item.id || seenIds.has(item.id)) continue;
+    seenIds.add(item.id);
+    if (item.id === 'other') {
+      hasOther = true;
+      deduped.push({ id: 'other', name: 'Other', offset: 0.0, locked: true });
+    } else {
+      deduped.push(item);
+    }
+  }
+  if (!hasOther) {
+    deduped.push({ id: 'other', name: 'Other', offset: 0.0, locked: true });
+  }
+  return deduped;
+}
 
 // In-memory session caches to respect Jimaku 25 req/min rate limit & speed up episode switching
 const ANILIST_CACHE = new Map(); // query -> mediaList
@@ -40,17 +108,24 @@ async function getSettings() {
     chrome.storage.local.get(
       {
         jimakuApiKey: '',
-        fontScale: 3.2,
-        bottomPosition: 10,
+        fontScale: 4.5,
+        bottomPosition: 5,
         bgOpacity: 0.0,
         textColor: '#ffffff',
         autoSearchApply: true,
         preferredFormat: 'ass,srt,vtt',
-        sourcePriorityMode: 'platinum_other',
+        sourceProfiles: null,
         preferredSource: DEFAULT_PREFERRED_SOURCE,
         netflixDefaultOffsetSec: -1.0,
       },
-      (items) => resolve(items)
+      (items) => {
+        items.sourceProfiles = normalizeSourceProfiles(
+          items.sourceProfiles,
+          items.preferredSource,
+          items.netflixDefaultOffsetSec
+        );
+        resolve(items);
+      }
     );
   });
 }
@@ -806,20 +881,21 @@ const NAMED_SOURCE_ALIASES = {
   shincaps: ['shincaps'],
 };
 
-function detectSourceCategory(filename) {
+function detectSourceCategory(filename, sourceProfiles) {
   const lower = (filename || '').toLowerCase();
-  const canonicalOrder = [
-    ['abema', NAMED_SOURCE_ALIASES.abema],
-    ['dmmtv', NAMED_SOURCE_ALIASES.dmmtv],
-    ['u-next', NAMED_SOURCE_ALIASES['u-next']],
-    ['amazon', NAMED_SOURCE_ALIASES.amazon],
-    ['netflix', NAMED_SOURCE_ALIASES.netflix],
-    ['nanokoraws', NAMED_SOURCE_ALIASES.nanokoraws],
-    ['shincaps', NAMED_SOURCE_ALIASES.shincaps],
-  ];
-  for (const [category, patterns] of canonicalOrder) {
-    if (patterns.some((p) => lower.includes(p))) {
-      return category;
+  const profiles = Array.isArray(sourceProfiles) && sourceProfiles.length > 0
+    ? sourceProfiles
+    : DEFAULT_SOURCE_PROFILES;
+
+  for (const profile of profiles) {
+    const id = String(profile.id || profile.name || '').toLowerCase();
+    if (!id || id === 'other') continue;
+    const patterns = NAMED_SOURCE_ALIASES[id] || [
+      String(profile.name || '').toLowerCase(),
+      id,
+    ].filter(Boolean);
+    if (patterns.some((p) => p && lower.includes(p))) {
+      return id;
     }
   }
   return 'other';
@@ -827,13 +903,13 @@ function detectSourceCategory(filename) {
 
 /**
  * Filter files by episode (with season, cumulative/cour mapping, and partTitle match)
- * and rank by user's source priority (including `Other`), format priority, and language purity.
+ * and rank by user's source priority (`sourceProfiles` or legacy string), format priority, and language purity.
  */
 function filterAndRankFiles(
   files,
   targetEpisode,
   preferredFormatStr,
-  preferredSourceStr,
+  sourceProfilesOrStr,
   extraMeta = {}
 ) {
   const validFiles = (files || []).filter((f) => /\.(srt|ass|ssa|vtt)$/i.test(f.name || ''));
@@ -845,11 +921,10 @@ function filterAndRankFiles(
     .map((s) => s.replace(/^\./, '').trim())
     .filter(Boolean);
 
-  const sourceOrder = (preferredSourceStr || DEFAULT_PREFERRED_SOURCE)
-    .toLowerCase()
-    .split(/[,、\s]+/)
-    .map((s) => (s.trim() === 'その他' ? 'other' : s.trim()))
-    .filter(Boolean);
+  const profiles = Array.isArray(sourceProfilesOrStr)
+    ? normalizeSourceProfiles(sourceProfilesOrStr)
+    : normalizeSourceProfiles(null, typeof sourceProfilesOrStr === 'string' ? sourceProfilesOrStr : DEFAULT_PREFERRED_SOURCE);
+  const sourceOrder = profiles.map((p) => p.id);
 
   const targetEp = targetEpisode != null ? Number(targetEpisode) : null;
   const partTitle = extraMeta.partTitle || '';
@@ -950,7 +1025,7 @@ function filterAndRankFiles(
     let ext = extMatch ? extMatch[1].toLowerCase() : '';
     if (ext === 'ssa') ext = 'ass';
 
-    const sourceCategory = detectSourceCategory(name);
+    const sourceCategory = detectSourceCategory(name, profiles);
     const { ptMatch } = parsedCache.get(file);
 
     // 1. Source priority score (supports `Other` at any tier position!)
@@ -1027,7 +1102,7 @@ async function jimakuGetFiles(entryId, episodeNumber, apiKey, settings, extraMet
     files,
     episodeNumber,
     settings.preferredFormat,
-    settings.preferredSource,
+    settings.sourceProfiles || settings.preferredSource,
     extraMeta
   );
 }
@@ -1078,6 +1153,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             apiKey,
             {
               preferredFormat: message.preferredFormat ?? settings.preferredFormat,
+              sourceProfiles: message.sourceProfiles ?? settings.sourceProfiles,
               preferredSource: message.preferredSource ?? settings.preferredSource,
             },
             message.extraMeta || {}

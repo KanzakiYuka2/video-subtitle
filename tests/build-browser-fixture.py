@@ -23,10 +23,13 @@ prime_adapter = prime_adapter.replace(
 styles = (root / 'extension/styles.css').read_text()
 i18n_path = root / 'extension/i18n.js'
 i18n_script = i18n_path.read_text() if i18n_path.exists() else ''
+source_profiles_path = root / 'extension/source_profiles.js'
+source_profiles_script = source_profiles_path.read_text() if source_profiles_path.exists() else ''
 
 scripts = [
     "window.chrome = {runtime:{onMessage:{addListener(){}}},storage:{local:{set(){}}}};",
     i18n_script,
+    source_profiles_script,
     registry,
     danime_adapter,
     prime_adapter,

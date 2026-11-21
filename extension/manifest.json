@@ -43,6 +43,7 @@
       ],
       "js": [
         "parser.js",
+        "source_profiles.js",
         "players/registry.js",
         "players/danime.js",
         "players/prime.js",
