@@ -2,7 +2,7 @@
 
 This guide explains how player adapters are separated from the core subtitle overlay engine and how to add support for new video streaming sites or run local verification tests.
 
-![Player Adapter Architecture](images/architecture.svg)
+![Player Adapter Architecture](/docs/images/architecture.svg)
 
 ---
 
@@ -32,7 +32,7 @@ This guide explains how player adapters are separated from the core subtitle ove
 
 ## Adding a New Player Adapter
 
-All site-specific player integration lives under [`extension/players/`](../extension/players/). Core subtitle parsing, overlay positioning, click-to-sync, i18n, and Jimaku.cc search are handled centrally in [`extension/content.js`](../extension/content.js) and [`extension/background.js`](../extension/background.js).
+All site-specific player integration lives under [`extension/players/`](/extension/players/). Core subtitle parsing, overlay positioning, click-to-sync, i18n, and Jimaku.cc search are handled centrally in [`extension/content.js`](/extension/content.js) and [`extension/background.js`](/extension/background.js).
 
 ### 1. Create `extension/players/<site>.js`
 
@@ -116,7 +116,7 @@ google-chrome --headless --disable-gpu --no-sandbox --dump-dom "file:///tmp/prim
 google-chrome --headless --disable-gpu --no-sandbox --dump-dom "file:///tmp/subtitle-search-test.html" | grep 'id="result"'
 ```
 
-Also update [`tests/build-browser-fixture.py`](../tests/build-browser-fixture.py) if you add a new adapter script so offline fixture tests include it.
+Also update [`tests/build-browser-fixture.py`](/tests/build-browser-fixture.py) if you add a new adapter script so offline fixture tests include it.
 
 ---
 
