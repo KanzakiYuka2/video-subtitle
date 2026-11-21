@@ -120,6 +120,7 @@ async function getSettings() {
         bgOpacity: 0.0,
         textColor: '#ffffff',
         autoSearchApply: true,
+        subtitleTransition: false,
         preferredFormat: 'ass,srt,vtt',
         sourceProfiles: null,
         preferredSource: DEFAULT_PREFERRED_SOURCE,

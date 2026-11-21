@@ -13,7 +13,7 @@
     resetOnNavigation: false,
     pollMetadata: false,
     alwaysResolveVideo: false,
-    uiClass: '',
+    uiClass: 'dsub-danime',
 
     matches(loc) {
       return /(^|\.)animestore\.docomo\.ne\.jp$/.test(loc.hostname);

@@ -14,7 +14,7 @@
     resetOnNavigation: true,
     pollMetadata: false,
     alwaysResolveVideo: false,
-    uiClass: '',
+    uiClass: 'dsub-generic',
     matches: () => true,
     getVideo() {
       const videos = Array.from(document.querySelectorAll('video'));

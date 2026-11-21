@@ -1,5 +1,60 @@
 /* Subtitle overlay and control panel styles */
 
+/* Per-player theme tokens (default / d-anime orange, Prime Video cyan-blue, Generic emerald) */
+#danime-sub-overlay,
+#danime-sub-fab,
+#danime-sub-panel,
+body,
+.dsub-danime {
+  --dsub-accent: #ff7849;
+  --dsub-accent-strong: #eb5528;
+  --dsub-accent-hover: #ff6a3d;
+  --dsub-accent-fab: rgba(235, 85, 40, 0.95);
+  --dsub-accent-soft: rgba(255, 120, 73, 0.08);
+  --dsub-accent-tint: rgba(235, 85, 40, 0.1);
+  --dsub-accent-rank-bg: rgba(235, 85, 40, 0.16);
+  --dsub-accent-drag-bg: rgba(235, 85, 40, 0.18);
+  --dsub-accent-bg-active: rgba(235, 85, 40, 0.22);
+  --dsub-accent-hover-bg: rgba(235, 85, 40, 0.25);
+  --dsub-accent-lyrics-bg: rgba(235, 85, 40, 0.2);
+}
+
+.dsub-prime,
+#danime-sub-overlay.dsub-prime,
+#danime-sub-fab.dsub-prime,
+#danime-sub-panel.dsub-prime,
+body.dsub-prime {
+  --dsub-accent: #38bdf8;
+  --dsub-accent-strong: #00a8e1;
+  --dsub-accent-hover: #0ea5e9;
+  --dsub-accent-fab: rgba(0, 168, 225, 0.95);
+  --dsub-accent-soft: rgba(56, 189, 248, 0.1);
+  --dsub-accent-tint: rgba(0, 168, 225, 0.12);
+  --dsub-accent-rank-bg: rgba(0, 168, 225, 0.18);
+  --dsub-accent-drag-bg: rgba(0, 168, 225, 0.2);
+  --dsub-accent-bg-active: rgba(0, 168, 225, 0.22);
+  --dsub-accent-hover-bg: rgba(0, 168, 225, 0.25);
+  --dsub-accent-lyrics-bg: rgba(0, 168, 225, 0.22);
+}
+
+.dsub-generic,
+#danime-sub-overlay.dsub-generic,
+#danime-sub-fab.dsub-generic,
+#danime-sub-panel.dsub-generic,
+body.dsub-generic {
+  --dsub-accent: #34d399;
+  --dsub-accent-strong: #10b981;
+  --dsub-accent-hover: #059669;
+  --dsub-accent-fab: rgba(16, 185, 129, 0.95);
+  --dsub-accent-soft: rgba(52, 211, 153, 0.1);
+  --dsub-accent-tint: rgba(16, 185, 129, 0.12);
+  --dsub-accent-rank-bg: rgba(16, 185, 129, 0.18);
+  --dsub-accent-drag-bg: rgba(16, 185, 129, 0.2);
+  --dsub-accent-bg-active: rgba(16, 185, 129, 0.22);
+  --dsub-accent-hover-bg: rgba(16, 185, 129, 0.25);
+  --dsub-accent-lyrics-bg: rgba(16, 185, 129, 0.22);
+}
+
 #danime-sub-overlay {
   position: fixed;
   left: 50%;
@@ -75,7 +130,7 @@
 #danime-sub-fab:hover,
 #danime-sub-fab.active {
   opacity: 1;
-  background: rgba(235, 85, 40, 0.95);
+  background: var(--dsub-accent-fab, rgba(235, 85, 40, 0.95));
   border-color: rgba(255, 255, 255, 0.4);
   transform: translateY(-1px);
 }
@@ -124,7 +179,7 @@
 .dsub-title {
   font-weight: 700;
   font-size: 14px;
-  color: #ff7849;
+  color: var(--dsub-accent, #ff7849);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -169,9 +224,9 @@
 }
 
 .dsub-tab.active {
-  color: #ff7849;
-  border-bottom-color: #ff7849;
-  background: rgba(255, 120, 73, 0.08);
+  color: var(--dsub-accent, #ff7849);
+  border-bottom-color: var(--dsub-accent, #ff7849);
+  background: var(--dsub-accent-soft, rgba(255, 120, 73, 0.08));
 }
 
 .dsub-body {
@@ -253,7 +308,7 @@
 #danime-sub-panel .dsub-input:focus,
 #danime-sub-panel .dsub-select:focus {
   outline: none;
-  border-color: #ff7849;
+  border-color: var(--dsub-accent, #ff7849);
 }
 
 .dsub-btn {
@@ -274,12 +329,12 @@
 }
 
 .dsub-btn-primary {
-  background: #eb5528;
-  border-color: #ff7849;
+  background: var(--dsub-accent-strong, #eb5528);
+  border-color: var(--dsub-accent, #ff7849);
 }
 
 .dsub-btn-primary:hover {
-  background: #ff6a3d;
+  background: var(--dsub-accent-hover, #ff6a3d);
 }
 
 .dsub-btn-danger {
@@ -299,8 +354,8 @@
 
 .dsub-dropzone:hover,
 .dsub-dropzone.dragover {
-  border-color: #ff7849;
-  background: rgba(235, 85, 40, 0.1);
+  border-color: var(--dsub-accent, #ff7849);
+  background: var(--dsub-accent-tint, rgba(235, 85, 40, 0.1));
   color: #fff;
 }
 
@@ -339,7 +394,7 @@
 }
 
 .dsub-list-item:hover {
-  background: rgba(235, 85, 40, 0.25);
+  background: var(--dsub-accent-hover-bg, rgba(235, 85, 40, 0.25));
 }
 
 .dsub-footer {
@@ -369,7 +424,7 @@
 }
 
 .dsub-hint a {
-  color: #ff7849;
+  color: var(--dsub-accent, #ff7849);
   text-decoration: underline;
 }
 
@@ -431,12 +486,12 @@
 }
 #danime-sub-lyrics .dsub-lyrics-list button.active {
   color: #fff;
-  background: #eb552830;
-  border-color: #ff7849;
+  background: var(--dsub-accent-lyrics-bg, #eb552830);
+  border-color: var(--dsub-accent, #ff7849);
 }
 #danime-sub-lyrics button:hover { background: #ffffff18; color: #fff; }
 #danime-sub-lyrics :focus-visible,
-#danime-sub-overlay .danime-sub-box:focus-visible { outline: 2px solid #ff7849; outline-offset: 2px; }
+#danime-sub-overlay .danime-sub-box:focus-visible { outline: 2px solid var(--dsub-accent, #ff7849); outline-offset: 2px; }
 
 #danime-sub-overlay.lyrics-open { bottom: 10% !important; }
 
@@ -575,8 +630,8 @@
 }
 
 .dsub-source-row.drag-over {
-  border-color: #ff7849;
-  background: rgba(235, 85, 40, 0.18);
+  border-color: var(--dsub-accent, #ff7849);
+  background: var(--dsub-accent-drag-bg, rgba(235, 85, 40, 0.18));
 }
 
 .dsub-source-row.is-other {
@@ -593,9 +648,9 @@
 .dsub-source-rank {
   font-size: 10px;
   font-weight: 700;
-  color: #ff7849;
+  color: var(--dsub-accent, #ff7849);
   text-align: center;
-  background: rgba(235, 85, 40, 0.16);
+  background: var(--dsub-accent-rank-bg, rgba(235, 85, 40, 0.16));
   border-radius: 4px;
   padding: 2px 0;
 }

@@ -16,6 +16,28 @@ document.addEventListener('DOMContentLoaded', () => {
   let sourceEditor = null;
   let saveFlashTimer = null;
 
+  function applyThemeFromUrl(rawUrl) {
+    try {
+      const host = new URL(rawUrl).hostname;
+      document.body.classList.remove('dsub-prime', 'dsub-danime', 'dsub-generic');
+      if (/(^|\.)(primevideo\.com|amazon\.co\.jp)$/.test(host)) {
+        document.body.classList.add('dsub-prime');
+      } else if (/(^|\.)animestore\.docomo\.ne\.jp$/.test(host)) {
+        document.body.classList.add('dsub-danime');
+      } else {
+        document.body.classList.add('dsub-generic');
+      }
+    } catch (_) {
+      document.body.classList.add('dsub-danime');
+    }
+  }
+
+  if (chrome?.tabs?.query) {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      applyThemeFromUrl(tabs?.[0]?.url || '');
+    });
+  }
+
   function applyLanguage() {
     document.documentElement.lang = currentLang === 'zh_CN' ? 'zh-CN' : currentLang;
     document.title = I18N.t('appTitle', null, currentLang);

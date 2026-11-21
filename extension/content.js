@@ -65,6 +65,7 @@
       partDispNumber: '',
       partTitle: '',
       episodeNumber: null,
+      searchKind: '',
     },
     settings: {
       language: I18N.detectDefaultLanguage(),
@@ -74,6 +75,7 @@
       bgOpacity: 0.0,
       textColor: '#ffffff',
       autoSearchApply: true,
+      subtitleTransition: false,
       preferredFormat: 'ass,srt,vtt',
       sourceProfiles: SP.cloneDefaultProfiles(),
       preferredSource: SP.DEFAULT_PREFERRED_SOURCE,
@@ -279,12 +281,18 @@
       }
       // Retain known metadata while transient player overlays hide
       if (info.workTitle) {
-        if (info.workTitle === state.workInfo.workTitle && info.episodeNumber == null) {
-          info.episodeNumber = state.workInfo.episodeNumber;
-          info.partDispNumber = state.workInfo.partDispNumber;
+        if (info.workTitle === state.workInfo.workTitle) {
+          if (info.episodeNumber == null) {
+            info.episodeNumber = state.workInfo.episodeNumber;
+            info.partDispNumber = state.workInfo.partDispNumber;
+          }
+          if (info.searchKind == null) {
+            info.searchKind = state.workInfo.searchKind;
+          }
         }
         state.workInfo = info;
         updateMetadataUI();
+        await maybeAutoSearchAndApply();
       }
       return state.workInfo;
     }
@@ -300,7 +308,11 @@
     if (!adapter.autoSearchOnLoad) return;
     if (!state.settings.autoSearchApply) return;
     if (!state.settings.jimakuApiKey) return;
-    const key = `${state.workInfo.partId}_${state.workInfo.cleanTitle}_${state.workInfo.episodeNumber}`;
+    const effectiveKind =
+      panelEl?.querySelector('#dsub-search-kind')?.value ||
+      state.workInfo.searchKind ||
+      adapter.defaultSearchKind;
+    const key = `${state.workInfo.partId}_${state.workInfo.cleanTitle}_${state.workInfo.episodeNumber}_${effectiveKind}`;
     if (!state.workInfo.cleanTitle || key === state.lastAutoSearchedPartId) return;
     state.lastAutoSearchedPartId = key;
     await handleJimakuSearch({ autoApplyBest: true });
@@ -310,11 +322,15 @@
     if (!panelEl) return;
     const titleInput = panelEl.querySelector('#dsub-search-title');
     const epInput = panelEl.querySelector('#dsub-search-ep');
+    const kindSelect = panelEl.querySelector('#dsub-search-kind');
     if (titleInput && state.workInfo.cleanTitle && !titleInput.dataset.userEdited) {
       titleInput.value = state.workInfo.cleanTitle;
     }
     if (epInput && state.workInfo.episodeNumber != null && !epInput.dataset.userEdited) {
       epInput.value = state.workInfo.episodeNumber;
+    }
+    if (kindSelect && !kindSelect.dataset.userEdited) {
+      kindSelect.value = state.workInfo.searchKind || getAdapter().defaultSearchKind || 'anime';
     }
   }
 
@@ -392,9 +408,12 @@
   function ensureUI() {
     if (document.getElementById('danime-sub-overlay')) return;
 
+    const adapter = getAdapter();
+
     // 1. Subtitle Overlay
     overlayEl = document.createElement('div');
     overlayEl.id = 'danime-sub-overlay';
+    if (adapter.uiClass) overlayEl.classList.add(adapter.uiClass);
     subBoxEl = document.createElement('div');
     subBoxEl.className = 'danime-sub-box';
     overlayEl.appendChild(subBoxEl);
@@ -421,7 +440,6 @@
     makeOverlayDraggable(overlayEl, subBoxEl);
 
     // 2. Floating Action Button (FAB)
-    const adapter = getAdapter();
     fabEl = document.createElement('button');
     fabEl.id = 'danime-sub-fab';
     if (adapter.uiClass) fabEl.classList.add(adapter.uiClass);
@@ -502,6 +520,12 @@
               <span data-i18n="autoSearchLabel"></span>
             </label>
           </div>
+          <div class="dsub-row">
+            <label class="dsub-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="checkbox" id="dsub-set-transition" />
+              <span data-i18n="subtitleTransitionLabel"></span>
+            </label>
+          </div>
           <div id="dsub-source-accordion-mount"></div>
           <div class="dsub-row">
             <span class="dsub-label" data-i18n="preferredFormatLabel"></span>
@@ -536,7 +560,7 @@
       <!-- Footer: Always-accessible sync offset & visibility toggle -->
       <div class="dsub-footer">
         <div class="dsub-row">
-          <span class="dsub-label"><span data-i18n="offsetLabel"></span>: <b id="dsub-offset-val">0.0s</b> <small id="dsub-offset-rule" style="color:#ff7849;font-size:10px;"></small></span>
+          <span class="dsub-label"><span data-i18n="offsetLabel"></span>: <b id="dsub-offset-val">0.0s</b> <small id="dsub-offset-rule" style="color:var(--dsub-accent,#ff7849);font-size:10px;"></small></span>
           <div class="dsub-offset-controls">
             <button class="dsub-btn" data-offset="-5" data-i18n-title="offsetSkipTitle">-5s</button>
             <button class="dsub-btn" data-offset="-0.5">-0.5s</button>
@@ -598,7 +622,7 @@
       }
       const apiKeyLabel = panelEl.querySelector('#dsub-set-apikey-label');
       if (apiKeyLabel) {
-        apiKeyLabel.innerHTML = `${t('apiKeyLabelPrefix')} (<a href="https://jimaku.cc/account" target="_blank" rel="noopener" style="color:#ff7849;">${t('apiKeyGetFree')}</a>)`;
+        apiKeyLabel.innerHTML = `${t('apiKeyLabelPrefix')} (<a href="https://jimaku.cc/account" target="_blank" rel="noopener" style="color:var(--dsub-accent,#ff7849);">${t('apiKeyGetFree')}</a>)`;
       }
       const langSelect = panelEl.querySelector('#dsub-set-lang');
       if (langSelect) {
@@ -807,6 +831,7 @@
     const bottomInput = panelEl.querySelector('#dsub-set-bottom');
     const opacityInput = panelEl.querySelector('#dsub-set-opacity');
     const autoApplyInput = panelEl.querySelector('#dsub-set-autoapply');
+    const transitionInput = panelEl.querySelector('#dsub-set-transition');
     const formatInput = panelEl.querySelector('#dsub-set-format');
 
     const scale = Number(state.settings.fontScale) || 4.5;
@@ -817,6 +842,7 @@
     const opPct = Math.round((state.settings.bgOpacity ?? 0) * 100);
     if (opacityInput) opacityInput.value = opPct;
     if (autoApplyInput) autoApplyInput.checked = Boolean(state.settings.autoSearchApply);
+    if (transitionInput) transitionInput.checked = Boolean(state.settings.subtitleTransition);
     if (formatInput) formatInput.value = state.settings.preferredFormat || 'ass,srt,vtt';
     const langInput = panelEl.querySelector('#dsub-set-lang');
     if (langInput) langInput.value = I18N.normalizeLanguage(state.settings.language);
@@ -921,12 +947,18 @@
 
     const titleInput = panelEl.querySelector('#dsub-search-title');
     const epInput = panelEl.querySelector('#dsub-search-ep');
+    const kindSelect = panelEl.querySelector('#dsub-search-kind');
     titleInput.addEventListener('input', () => {
       titleInput.dataset.userEdited = '1';
     });
     epInput.addEventListener('input', () => {
       epInput.dataset.userEdited = '1';
     });
+    if (kindSelect) {
+      kindSelect.addEventListener('change', () => {
+        kindSelect.dataset.userEdited = '1';
+      });
+    }
 
     panelEl
       .querySelector('#dsub-jimaku-search-btn')
@@ -988,6 +1020,7 @@
     const opacityInput = panelEl.querySelector('#dsub-set-opacity');
     const transparentBtn = panelEl.querySelector('#dsub-transparent-btn');
     const autoApplyInput = panelEl.querySelector('#dsub-set-autoapply');
+    const transitionInput = panelEl.querySelector('#dsub-set-transition');
     const formatInput = panelEl.querySelector('#dsub-set-format');
     const sourceMountEl = panelEl.querySelector('#dsub-source-accordion-mount');
 
@@ -1048,6 +1081,12 @@
       saveSettings({ autoSearchApply: e.target.checked });
     });
 
+    if (transitionInput) {
+      transitionInput.addEventListener('change', (e) => {
+        saveSettings({ subtitleTransition: e.target.checked });
+      });
+    }
+
     formatInput.addEventListener('change', (e) => {
       saveSettings({ preferredFormat: e.target.value });
     });
@@ -1059,6 +1098,7 @@
         language: I18N.normalizeLanguage(langInput ? langInput.value : state.settings.language),
         jimakuApiKey: apiKeyInput.value.trim(),
         autoSearchApply: autoApplyInput.checked,
+        subtitleTransition: transitionInput ? transitionInput.checked : false,
         preferredFormat: formatInput.value,
         sourceProfiles: normalized,
         preferredSource: normalized.map((p) => p.name).join(','),
@@ -1295,7 +1335,7 @@
       switchBar.className = 'dsub-list-item';
       switchBar.style.color = '#9ca3af';
       switchBar.style.fontSize = '11px';
-      switchBar.innerHTML = `<span>📁 ${entry.japanese_name || entry.name}</span><span style="color:#ff7849;">${t('switchCandidateBtn', { count: allEntries.length })}</span>`;
+      switchBar.innerHTML = `<span>📁 ${entry.japanese_name || entry.name}</span><span style="color:var(--dsub-accent,#ff7849);">${t('switchCandidateBtn', { count: allEntries.length })}</span>`;
       switchBar.addEventListener('click', () => renderEntryList(allEntries, episode, resolvedMeta));
       listEl.appendChild(switchBar);
     }
@@ -1304,18 +1344,18 @@
       const item = document.createElement('div');
       item.className = 'dsub-list-item';
       if (idx === 0) {
-        item.style.background = 'rgba(235, 85, 40, 0.22)';
-        item.style.borderLeft = '3px solid #ff7849';
+        item.style.background = 'var(--dsub-accent-bg-active, rgba(235, 85, 40, 0.22))';
+        item.style.borderLeft = '3px solid var(--dsub-accent, #ff7849)';
       }
       const badgeTag = file._partTitleMatched ? '🎯 ' : idx === 0 ? '★ ' : '';
-      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;" title="${file.name}">${badgeTag}${file.name}</span><span style="color:#ff7849;font-size:11px;white-space:nowrap;">${t('fileLoadBtn')}</span>`;
+      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;" title="${file.name}">${badgeTag}${file.name}</span><span style="color:var(--dsub-accent,#ff7849);font-size:11px;white-space:nowrap;">${t('fileLoadBtn')}</span>`;
       item.addEventListener('click', () => {
         listEl.querySelectorAll('.dsub-list-item').forEach((el) => {
           el.style.background = '';
           el.style.borderLeft = '';
         });
-        item.style.background = 'rgba(235, 85, 40, 0.22)';
-        item.style.borderLeft = '3px solid #ff7849';
+        item.style.background = 'var(--dsub-accent-bg-active, rgba(235, 85, 40, 0.22))';
+        item.style.borderLeft = '3px solid var(--dsub-accent, #ff7849)';
         saveSelectedEntry(entry, resolvedMeta);
         downloadAndApplyJimakuFile(file);
       });
@@ -1423,7 +1463,11 @@
     const combined = activeTexts.join('\n');
     if (subBoxEl.textContent !== combined) {
       subBoxEl.textContent = combined;
-      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (
+        Boolean(state.settings.subtitleTransition) &&
+        combined &&
+        !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
         subBoxEl.animate([
           { opacity: 0.3, transform: 'translateY(6px)' },
           { opacity: 1, transform: 'translateY(0)' },
@@ -1504,6 +1548,7 @@
         'bottomPosition',
         'bgOpacity',
         'autoSearchApply',
+        'subtitleTransition',
         'preferredFormat',
         'preferredSource',
         'netflixDefaultOffsetSec',
@@ -1534,16 +1579,30 @@
 
   function resetPrimeEpisode() {
     mediaGeneration++;
+    state.lastAutoSearchedPartId = '';
     setCues([], null);
     state.offsetSec = 0;
     state.offsetRuleMeta = null;
     state.offsetRuleLabel = '';
     state.currentSourceCategory = '';
     updateOffsetUI();
-    state.workInfo = { partId: '', workTitle: '', cleanTitle: '', partDispNumber: '', partTitle: '', episodeNumber: null };
-    for (const id of ['#dsub-search-title', '#dsub-search-ep']) {
+    state.workInfo = {
+      partId: '',
+      workTitle: '',
+      cleanTitle: '',
+      partDispNumber: '',
+      partTitle: '',
+      episodeNumber: null,
+      searchKind: '',
+    };
+    for (const id of ['#dsub-search-title', '#dsub-search-ep', '#dsub-search-kind']) {
       const input = panelEl.querySelector(id);
-      input.value = '';
+      if (!input) continue;
+      if (id === '#dsub-search-kind') {
+        input.value = getAdapter().defaultSearchKind || 'anime';
+      } else {
+        input.value = '';
+      }
       delete input.dataset.userEdited;
     }
     panelEl.querySelector('#dsub-jimaku-results').replaceChildren();
@@ -1582,11 +1641,12 @@
       const adapter = getAdapter();
       if (window.location.href !== lastHref) {
         lastHref = window.location.href;
+        state.lastAutoSearchedPartId = '';
         if (adapter.resetOnNavigation) resetPrimeEpisode();
-        const titleInput = panelEl?.querySelector('#dsub-search-title');
-        const epInput = panelEl?.querySelector('#dsub-search-ep');
-        if (titleInput) delete titleInput.dataset.userEdited;
-        if (epInput) delete epInput.dataset.userEdited;
+        for (const id of ['#dsub-search-title', '#dsub-search-ep', '#dsub-search-kind']) {
+          const el = panelEl?.querySelector(id);
+          if (el) delete el.dataset.userEdited;
+        }
         detectWorkInfo();
       } else if (adapter.pollMetadata) {
         detectWorkInfo();
