@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>dアニメ字幕アシスタント</title>
+  <title>字幕アシスタント (dアニメ・Prime)</title>
   <style>
     body {
       width: 320px;
@@ -39,6 +39,16 @@
       color: #fff;
       font-size: 12px;
       box-sizing: border-box;
+      -webkit-text-fill-color: #fff;
+      caret-color: #fff;
+      opacity: 1;
+      text-shadow: none;
+      -webkit-text-stroke: 0 transparent;
+    }
+    input::placeholder {
+      color: #9ca3af;
+      -webkit-text-fill-color: #9ca3af;
+      opacity: 1;
     }
     button {
       width: 100%;
@@ -71,7 +81,7 @@
   </style>
 </head>
 <body>
-  <h2>🎬 dアニメ字幕アシスタント</h2>
+  <h2>🎬 字幕アシスタント (dアニメ・Prime)</h2>
   <div class="field">
     <label>Jimaku.cc APIキー (<a href="https://jimaku.cc/account" target="_blank">無料取得</a>)</label>
     <input type="text" id="apiKey" autocomplete="off" spellcheck="false" style="-webkit-text-security: disc;" placeholder="APIキーを入力..." />
@@ -85,7 +95,7 @@
     </select>
   </div>
   <div class="field">
-    <label>Netflix標準オフセット (秒 / 作品別未設定時に自動適用)</label>
+    <label for="netflixDefaultOffsetSec">Netflix標準オフセット (秒 / 作品別未設定時に自動適用)</label>
     <input type="number" id="netflixDefaultOffsetSec" step="0.5" value="-1.0" />
   </div>
   <div class="field">

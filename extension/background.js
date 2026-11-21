@@ -495,7 +495,7 @@ function scoreSeasonMatch(titlesArray, targetSeason) {
 /**
  * Multi-stage Season & Franchise-Aware Search on Jimaku.cc
  */
-async function jimakuSearch(rawTitle, targetEpisode, apiKey) {
+async function jimakuSearch(rawTitle, apiKey, kind = 'anime', targetEpisode = null) {
   if (!apiKey) {
     throw new Error('Jimaku APIキーが設定されていません。パネルの「⚙ 設定」から登録してください。');
   }
@@ -504,6 +504,17 @@ async function jimakuSearch(rawTitle, targetEpisode, apiKey) {
     Accept: 'application/json',
   };
 
+  // Live-action titles bypass AniList, preserving Prime Video's drama search.
+  if (kind === 'drama') {
+    const query = new URLSearchParams({ query: rawTitle.trim(), anime: 'false' });
+    const response = await fetch(`${JIMAKU_BASE}/entries/search?${query}`, { headers });
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Jimaku APIキーが無効です（401 Unauthorized）。設定を確認してください。');
+    }
+    if (!response.ok) throw new Error(`Jimaku検索エラー (${response.status})`);
+    const entries = await response.json();
+    return { entries: Array.isArray(entries) ? entries : [], resolvedMeta: {} };
+  }
   const resolved = await resolveFranchiseAndEpisode(rawTitle, targetEpisode);
   const cacheKey = `${resolved.cleanTitle}::${resolved.targetNode?.id || ''}::${resolved.isBoundaryExtra ? 'b' : ''}`;
   const cachedEntries = getCache(JIMAKU_SEARCH_CACHE, cacheKey);
@@ -1075,8 +1086,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const apiKey = message.apiKey || settings.jimakuApiKey;
           const result = await jimakuSearch(
             message.title,
-            message.episode ?? null,
-            apiKey
+            apiKey,
+            message.kind || 'anime',
+            message.episode ?? null
           );
           sendResponse({
             ok: true,

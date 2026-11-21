@@ -39,7 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   saveBtn.addEventListener('click', () => {
     const mode = sourceModeEl.value;
-    const nfOff = parseFloat(nfOffsetEl.value);
+    const nfOff = Number.isFinite(nfOffsetEl.valueAsNumber)
+      ? nfOffsetEl.valueAsNumber
+      : parseFloat(nfOffsetEl.value);
     const payload = {
       jimakuApiKey: apiKeyEl.value.trim(),
       aiServerUrl: aiServerEl.value.trim() || 'http://127.0.0.1:8765',

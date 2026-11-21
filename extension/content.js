@@ -14,6 +14,13 @@
   if (window.__DANIME_SUB_ASSISTANT_LOADED__) return;
   window.__DANIME_SUB_ASSISTANT_LOADED__ = true;
 
+  const player = window.SubtitlePlayer || {
+    isPrime: false,
+    getVideo: () => document.querySelector('video'),
+    primeInfo: () => ({}),
+  };
+  let mediaGeneration = 0;
+
   const SOURCE_PRIORITY_PRESETS = {
     platinum_other: 'ABEMA,DMMTV,U-NEXT,Amazon,Other,Netflix,NanokoRaws,shincaps',
     standard_tiers: 'ABEMA,DMMTV,U-NEXT,Amazon,Netflix,NanokoRaws,shincaps,Other',
@@ -74,6 +81,12 @@
   let fabEl = null;
   let panelEl = null;
   let currentVideo = null;
+  let lyricsEl = null;
+  let lyricsListEl = null;
+  let lyricsCues = null;
+  let lyricsCount = -1;
+  let lyricsIndex = -1;
+  let suppressSubtitleClick = false;
 
   /**
    * Clean d-anime edition/broadcast tag brackets while preserving title brackets like 【推しの子】.
@@ -167,9 +180,12 @@
   }
 
   function sendBgMessage(payload) {
+    const generation = mediaGeneration;
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(payload, (response) => {
-        if (chrome.runtime.lastError) {
+        if (generation !== mediaGeneration) {
+          resolve({ ok: false, error: '動画が切り替わりました。再検索してください。' });
+        } else if (chrome.runtime.lastError) {
           resolve({ ok: false, error: chrome.runtime.lastError.message });
         } else {
           resolve(response || { ok: false, error: 'No response' });
@@ -190,6 +206,25 @@
 
   // Fetch d-anime metadata from official internal REST endpoint or DOM
   async function detectWorkInfo() {
+    if (player.isPrime) {
+      const info = player.primeInfo();
+      const previous = state.workInfo;
+      if (previous.workTitle && info.workTitle &&
+          (previous.workTitle !== info.workTitle ||
+           (previous.episodeNumber != null && info.episodeNumber != null && previous.episodeNumber !== info.episodeNumber))) {
+        resetPrimeEpisode();
+      }
+      // Player controls may temporarily disappear; retain known metadata until navigation.
+      if (info.workTitle) {
+        if (info.workTitle === state.workInfo.workTitle && info.episodeNumber == null) {
+          info.episodeNumber = state.workInfo.episodeNumber;
+          info.partDispNumber = state.workInfo.partDispNumber;
+        }
+        state.workInfo = info;
+        updateMetadataUI();
+      }
+      return state.workInfo;
+    }
     const params = new URLSearchParams(window.location.search);
     const partId = params.get('partId') || '';
 
@@ -327,11 +362,30 @@
     overlayEl.appendChild(subBoxEl);
     document.body.appendChild(overlayEl);
 
+    subBoxEl.tabIndex = 0;
+    subBoxEl.setAttribute('role', 'button');
+    subBoxEl.setAttribute('aria-expanded', 'false');
+    subBoxEl.title = 'クリックで字幕一覧・タイミング調整 / ドラッグで移動';
+    subBoxEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!suppressSubtitleClick) toggleLyrics();
+    });
+    subBoxEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleLyrics();
+      }
+    });
+    createLyricsPad();
+
+    // Make subtitle overlay vertically draggable
     makeOverlayDraggable(overlayEl, subBoxEl);
 
     // 2. Floating Action Button (FAB)
     fabEl = document.createElement('button');
     fabEl.id = 'danime-sub-fab';
+    fabEl.classList.toggle('dsub-prime', player.isPrime);
     fabEl.title = '字幕アシスタントを開く (Alt+S: 字幕ON/OFF)';
     fabEl.innerHTML = `<span>💬 字幕</span><span class="danime-sub-badge" id="danime-sub-fab-badge">未読込</span>`;
     fabEl.addEventListener('click', () => {
@@ -346,10 +400,12 @@
     // 3. Control Panel
     panelEl = document.createElement('div');
     panelEl.id = 'danime-sub-panel';
+    panelEl.classList.toggle('dsub-prime', player.isPrime);
+    // Make panel focusable so clicking anywhere inside keeps focus inside the panel
     panelEl.tabIndex = -1;
     panelEl.innerHTML = `
       <div class="dsub-header">
-        <div class="dsub-title">🎬 dアニメ字幕アシスタント</div>
+        <div class="dsub-title">🎬 字幕アシスタント</div>
         <button class="dsub-close" id="dsub-close-btn" title="閉じる">×</button>
       </div>
 
@@ -363,17 +419,23 @@
       <div class="dsub-body">
         <!-- Tab 1: Jimaku.cc Search -->
         <div class="dsub-section active" id="dsub-tab-jimaku">
+          <label class="dsub-row">検索対象
+            <select class="dsub-select" id="dsub-search-kind" style="width:180px">
+              <option value="anime">アニメ</option>
+              <option value="drama" ${player.isPrime ? 'selected' : ''}>ドラマ・実写</option>
+            </select>
+          </label>
           <div class="dsub-row">
-            <input type="text" class="dsub-input" id="dsub-search-title" placeholder="アニメタイトル (日本語・英語・略称OK)" />
+            <input type="text" class="dsub-input" id="dsub-search-title" placeholder="作品タイトル (日本語・英語・略称OK)" />
             <input type="number" class="dsub-input" id="dsub-search-ep" placeholder="話数" style="width: 68px;" min="0" />
           </div>
           <div class="dsub-row">
             <button class="dsub-btn dsub-btn-primary" id="dsub-jimaku-search-btn" style="width: 100%;">
-              Jimaku.cc から検索＆最適字幕を適用
+              ${player.isPrime ? 'Jimaku.cc から字幕を検索' : 'Jimaku.cc から検索＆最適字幕を適用'}
             </button>
           </div>
           <div class="dsub-status" id="dsub-jimaku-status">
-            再生中の作品タイトルから自動で日本語字幕(.ass/.srt)を検索・適用します。
+            ${player.isPrime ? 'Prime Video: 作品名・話数を確認して検索してください。検出できない場合は手入力できます。' : '再生中の作品タイトルから自動で日本語字幕(.ass/.srt)を検索・適用します。'}
           </div>
           <div class="dsub-list" id="dsub-jimaku-results" style="display: none;"></div>
         </div>
@@ -418,7 +480,7 @@
           <div class="dsub-row">
             <label class="dsub-label" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
               <input type="checkbox" id="dsub-set-autoapply" checked />
-              動画を開いた時に自動で字幕を検索・適用する
+              dアニメで動画を開いた時に自動で字幕を検索・適用する
             </label>
           </div>
           <div class="dsub-row">
@@ -498,14 +560,112 @@
     applyOverlayStyles();
   }
 
+  function createLyricsPad() {
+    lyricsEl = document.createElement('section');
+    lyricsEl.id = 'danime-sub-lyrics';
+    lyricsEl.hidden = true;
+    lyricsEl.setAttribute('aria-label', '字幕タイミング調整');
+    lyricsEl.innerHTML = `
+      <div class="dsub-lyrics-toolbar">
+        <select aria-label="字幕クリック時の動作">
+          <option value="sync">この台詞を今に合わせる</option>
+          <option value="seek">この台詞へ動画を移動</option>
+        </select>
+        <button type="button" data-reset>調整リセット</button>
+        <button type="button" data-close aria-label="字幕一覧を閉じる">×</button>
+      </div>
+      <div class="dsub-lyrics-help">前後にスクロールして台詞をクリック。字幕全体のタイミングを調整します。</div>
+      <div class="dsub-lyrics-list" tabindex="0" aria-label="字幕一覧"></div>`;
+    overlayEl.appendChild(lyricsEl);
+    lyricsListEl = lyricsEl.querySelector('.dsub-lyrics-list');
+    lyricsEl.querySelector('[data-close]').onclick = () => toggleLyrics(false);
+    lyricsEl.querySelector('[data-reset]').onclick = () => {
+      state.offsetSec = 0;
+      updateOffsetUI();
+      renderCurrentSubtitle();
+    };
+    lyricsEl.querySelector('select').onchange = (e) => {
+      lyricsEl.querySelector('.dsub-lyrics-help').textContent = e.target.value === 'sync'
+        ? '前後にスクロールして台詞をクリック。字幕全体のタイミングを調整します。'
+        : '台詞をクリックすると、調整済みの開始時刻へ動画を移動します。';
+    };
+    ['click', 'dblclick', 'mousedown', 'pointerdown', 'wheel', 'keydown', 'keyup'].forEach((type) => {
+      lyricsEl.addEventListener(type, (e) => {
+        e.stopPropagation();
+        if (type === 'keydown' && e.key === 'Escape') toggleLyrics(false);
+      });
+    });
+    lyricsListEl.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-cue]');
+      const video = player.getVideo();
+      const cue = row && state.cues[Number(row.dataset.cue)];
+      if (!cue || !video || !Number.isFinite(video.currentTime)) return;
+      currentVideo = video;
+      if (lyricsEl.querySelector('select').value === 'sync') {
+        state.offsetSec = video.currentTime - cue.start;
+        updateOffsetUI();
+      } else {
+        const target = Math.max(0, cue.start + state.offsetSec);
+        video.currentTime = Number.isFinite(video.duration) ? Math.min(target, video.duration) : target;
+      }
+      renderCurrentSubtitle();
+      toggleLyrics(false);
+    });
+  }
+
+  function toggleLyrics(open = lyricsEl.hidden) {
+    if (open && !state.cues.length) return;
+    lyricsEl.hidden = !open;
+    overlayEl.classList.toggle('lyrics-open', open);
+    subBoxEl.setAttribute('aria-expanded', String(open));
+    if (open) {
+      renderCurrentSubtitle();
+      const row = lyricsListEl.children[Math.max(0, lyricsIndex)];
+      if (row) lyricsListEl.scrollTop = row.offsetTop - lyricsListEl.clientHeight / 2 + row.offsetHeight / 2;
+      lyricsListEl.focus();
+    } else {
+      subBoxEl.focus({ preventScroll: true });
+    }
+  }
+
+  function updateLyrics(t) {
+    if (lyricsEl.hidden) return;
+    if (lyricsCues !== state.cues || lyricsCount !== state.cues.length) {
+      lyricsCues = state.cues;
+      lyricsCount = state.cues.length;
+      lyricsListEl.replaceChildren();
+      state.cues.forEach((cue, index) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.dataset.cue = index;
+        const minutes = Math.floor(cue.start / 60);
+        const seconds = (cue.start % 60).toFixed(1).padStart(4, '0');
+        row.textContent = `${minutes}:${seconds}  ${cue.text.replace(/<[^>]*>/g, '')}`;
+        lyricsListEl.appendChild(row);
+      });
+    }
+    lyricsIndex = state.cues.findIndex((cue) => t >= cue.start && t < cue.end);
+    if (lyricsIndex < 0) {
+      lyricsIndex = state.cues.findIndex((cue) => cue.start > t);
+      if (lyricsIndex < 0) lyricsIndex = state.cues.length - 1;
+    }
+    Array.from(lyricsListEl.children).forEach((row, index) => {
+      row.classList.toggle('active', index === lyricsIndex);
+      row.setAttribute('aria-current', String(index === lyricsIndex));
+    });
+  }
+
   function makeOverlayDraggable(overlay, box) {
     let dragging = false;
     let startY = 0;
     let startBottom = 10;
+    let moved = false;
 
     box.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       dragging = true;
+      moved = false;
+      suppressSubtitleClick = false;
       startY = e.clientY;
       startBottom = state.settings.bottomPosition;
       box.style.cursor = 'grabbing';
@@ -515,6 +675,9 @@
     window.addEventListener('mousemove', (e) => {
       if (!dragging) return;
       const deltaY = startY - e.clientY;
+      if (Math.abs(deltaY) < 5 && !moved) return;
+      moved = true;
+      suppressSubtitleClick = true;
       const deltaPct = (deltaY / window.innerHeight) * 100;
       const nextBottom = Math.min(90, Math.max(2, Math.round(startBottom + deltaPct)));
       saveSettings({ bottomPosition: nextBottom });
@@ -534,7 +697,7 @@
 
   function computeResponsiveFontSizePx() {
     const scale = Number(state.settings.fontScale) || 3.2;
-    const v = currentVideo || document.querySelector('video');
+    const v = currentVideo || player.getVideo();
     let baseHeight = window.innerHeight;
     if (v) {
       const rect = v.getBoundingClientRect();
@@ -603,6 +766,7 @@
 
   function setCues(cues, label) {
     state.cues = cues || [];
+    if (!state.cues.length && lyricsEl && !lyricsEl.hidden) toggleLyrics(false);
     updateBadge(`${label} (${state.cues.length}行)`);
     renderCurrentSubtitle();
   }
@@ -797,7 +961,9 @@
     panelEl.querySelector('#dsub-save-settings-btn').addEventListener('click', () => {
       const mode = sourceModeInput.value;
       const srcStr = sourceInput.value.trim() || NEW_DEFAULT_SOURCE;
-      const nfOff = parseFloat(nfOffsetInput.value);
+      const nfOff = Number.isFinite(nfOffsetInput.valueAsNumber)
+        ? nfOffsetInput.valueAsNumber
+        : parseFloat(nfOffsetInput.value);
       saveSettings({
         jimakuApiKey: apiKeyInput.value.trim(),
         aiServerUrl: aiUrlInput.value.trim() || 'http://127.0.0.1:8765',
@@ -832,6 +998,7 @@
     panelEl.querySelector('#dsub-clear-btn').addEventListener('click', () => {
       state.cues = [];
       subBoxEl.textContent = '';
+      toggleLyrics(false);
       updateBadge('未読込');
     });
   }
@@ -876,6 +1043,7 @@
 
   // Jimaku.cc Search & Multi-Entry Auto-load Flow
   async function handleJimakuSearch(options = { autoApplyBest: true }) {
+    if (player.isPrime) options = { ...options, autoApplyBest: false };
     const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
     const rawInputTitle = panelEl.querySelector('#dsub-search-title').value.trim();
@@ -884,16 +1052,18 @@
     const episode = epVal ? parseInt(epVal, 10) : state.workInfo.episodeNumber;
 
     if (!title) {
-      statusEl.textContent = '⚠️ アニメのタイトルを入力してください。';
+      statusEl.textContent = '⚠️ 作品のタイトルを入力してください。';
       return;
     }
 
-    statusEl.textContent = `🔎 「${title}」を AniList + Jimaku.cc で検索中...`;
+    const kind = panelEl.querySelector('#dsub-search-kind').value;
+    statusEl.textContent = `🔎 「${title}」を ${kind === 'drama' ? 'Jimaku.cc (実写)' : 'AniList + Jimaku.cc'} で検索中...`;
     listEl.style.display = 'none';
     listEl.innerHTML = '';
 
     const res = await sendBgMessage({
       type: 'JIMAKU_SEARCH',
+      kind,
       title,
       episode,
       apiKey: state.settings.jimakuApiKey,
@@ -904,7 +1074,7 @@
       return;
     }
 
-    let entries = res.entries || [];
+    const entries = res.entries || [];
     const resolvedMeta = res.resolvedMeta || {};
 
     if (entries.length === 0) {
@@ -914,22 +1084,25 @@
     }
 
     // Prioritize user's previously chosen Jimaku entry for this anime & season (if not an ambiguous boundary extra)
-    const entryKey = getEntryStorageKey(resolvedMeta);
-    const savedEntryId = entryKey ? (state.settings.workEntries || {})[entryKey] : null;
-    if (savedEntryId && !resolvedMeta.isBoundaryExtra) {
-      const idx = entries.findIndex((e) => e.id === savedEntryId);
-      if (idx > 0) {
-        const [saved] = entries.splice(idx, 1);
-        entries.unshift(saved);
+    if (kind !== 'drama') {
+      const entryKey = getEntryStorageKey(resolvedMeta);
+      const savedEntryId = entryKey ? (state.settings.workEntries || {})[entryKey] : null;
+      if (savedEntryId && !resolvedMeta.isBoundaryExtra) {
+        const idx = entries.findIndex((e) => e.id === savedEntryId);
+        if (idx > 0) {
+          const [saved] = entries.splice(idx, 1);
+          entries.unshift(saved);
+        }
       }
     }
 
-    if (entries.length === 1 || options.autoApplyBest) {
+    if (options.autoApplyBest) {
       await autoPickBestAcrossEntries(entries, episode, resolvedMeta);
-      return;
+    } else if (entries.length === 1) {
+      await loadJimakuEntryFiles(entries[0], episode, false, entries, resolvedMeta);
+    } else {
+      renderEntryList(entries, episode, resolvedMeta);
     }
-
-    renderEntryList(entries, episode, resolvedMeta);
   }
 
   /**
@@ -993,7 +1166,6 @@
       statusEl.textContent = '⚠️ 対象話数の字幕ファイルが見つかりませんでした。';
     }
   }
-
   function renderEntryList(entries, episode, resolvedMeta = {}) {
     const statusEl = panelEl.querySelector('#dsub-jimaku-status');
     const listEl = panelEl.querySelector('#dsub-jimaku-results');
@@ -1010,7 +1182,7 @@
       item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;">📁 ${display}</span><span style="color:#9ca3af;font-size:11px;white-space:nowrap;">選択 ▶</span>`;
       item.addEventListener('click', () => {
         saveSelectedEntry(entry, resolvedMeta);
-        loadJimakuEntryFiles(entry, episode, true, entries, resolvedMeta);
+        loadJimakuEntryFiles(entry, episode, !player.isPrime, entries, resolvedMeta);
       });
       listEl.appendChild(item);
     });
@@ -1136,7 +1308,7 @@
     const statusEl = panelEl.querySelector('#dsub-ai-status');
     const toggleBtn = panelEl.querySelector('#dsub-ai-toggle-btn');
 
-    const video = document.querySelector('video');
+    const video = player.getVideo();
     if (!video) {
       statusEl.textContent = '❌ 再生中の動画(<video>)が見つかりません。';
       return;
@@ -1281,8 +1453,8 @@
   // Render active subtitle cue for current video time
   function renderCurrentSubtitle() {
     if (!subBoxEl || !state.enabled) return;
-    if (!currentVideo || !document.body.contains(currentVideo)) {
-      currentVideo = document.querySelector('video');
+    if (player.isPrime || !currentVideo || !document.body.contains(currentVideo)) {
+      currentVideo = player.getVideo();
     }
     if (!currentVideo || state.cues.length === 0) {
       if (!state.ai.active) subBoxEl.textContent = '';
@@ -1290,6 +1462,7 @@
     }
 
     const t = currentVideo.currentTime - state.offsetSec;
+    updateLyrics(t);
     const activeTexts = [];
     for (let i = 0; i < state.cues.length; i++) {
       const c = state.cues[i];
@@ -1301,6 +1474,12 @@
     const combined = activeTexts.join('\n');
     if (subBoxEl.textContent !== combined) {
       subBoxEl.textContent = combined;
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        subBoxEl.animate([
+          { opacity: 0.3, transform: 'translateY(6px)' },
+          { opacity: 1, transform: 'translateY(0)' },
+        ], { duration: 180, easing: 'ease-out' });
+      }
     }
   }
 
@@ -1366,6 +1545,23 @@
     }
   });
 
+  function resetPrimeEpisode() {
+    mediaGeneration++;
+    stopAiTranscription();
+    setCues([], '未読込');
+    state.offsetSec = 0;
+    state.offsetRuleLabel = '';
+    state.currentSourceCategory = '';
+    updateOffsetUI();
+    state.workInfo = { partId: '', workTitle: '', cleanTitle: '', partDispNumber: '', partTitle: '', episodeNumber: null };
+    for (const id of ['#dsub-search-title', '#dsub-search-ep']) {
+      const input = panelEl.querySelector(id);
+      input.value = '';
+      delete input.dataset.userEdited;
+    }
+    panelEl.querySelector('#dsub-jimaku-results').replaceChildren();
+  }
+
   // Main initialization loop
   async function init() {
     ensureUI();
@@ -1376,7 +1572,7 @@
     await detectWorkInfo();
 
     setInterval(() => {
-      const v = document.querySelector('video');
+      const v = player.getVideo();
       if (v && v !== currentVideo) {
         currentVideo = v;
         v.addEventListener('timeupdate', renderCurrentSubtitle);
@@ -1391,10 +1587,13 @@
     setInterval(() => {
       if (window.location.href !== lastHref) {
         lastHref = window.location.href;
+        if (player.isPrime) resetPrimeEpisode();
         const titleInput = panelEl?.querySelector('#dsub-search-title');
         const epInput = panelEl?.querySelector('#dsub-search-ep');
         if (titleInput) delete titleInput.dataset.userEdited;
         if (epInput) delete epInput.dataset.userEdited;
+        detectWorkInfo();
+      } else if (player.isPrime) {
         detectWorkInfo();
       }
     }, 1000);
