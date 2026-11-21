@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 470" width="1200" height="470" role="img" aria-label="Modular Player Adapter Architecture Diagram">
+  <defs>
+    <linearGradient id="archBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d1117" />
+      <stop offset="100%" stop-color="#141925" />
+    </linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,1 L7,4 L0,7 Z" fill="#ff7849" />
+    </marker>
+    <marker id="arrowCyan" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,1 L7,4 L0,7 Z" fill="#38bdf8" />
+    </marker>
+  </defs>
+
+  <rect width="1200" height="470" rx="18" fill="url(#archBg)" />
+  <rect x="1" y="1" width="1198" height="468" rx="17" fill="none" stroke="rgba(255,255,255,0.12)" />
+
+  <g font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans JP', sans-serif">
+    <text x="40" y="44" fill="#ffffff" font-size="22" font-weight="800">Modular Player Adapter Architecture</text>
+    <text x="40" y="66" fill="#94a3b8" font-size="13.5">Add support for any new VOD website by dropping one small adapter file under extension/players/ without modifying core UI or search logic</text>
+
+    <!-- Column 1: Player Adapters -->
+    <g transform="translate(40, 96)">
+      <rect width="310" height="338" rx="14" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)" />
+      <text x="18" y="30" fill="#cbd5e1" font-size="13" font-weight="700" letter-spacing="0.4">PLAYER ADAPTERS (extension/players/)</text>
+
+      <!-- danime.js -->
+      <rect x="18" y="48" width="274" height="82" rx="10" fill="#181c28" stroke="#eb5528" />
+      <text x="32" y="72" fill="#ff9d7a" font-size="14" font-weight="700">danime.js</text>
+      <text x="32" y="92" fill="#94a3b8" font-size="11.5">animestore.docomo.ne.jp</text>
+      <text x="32" y="112" fill="#cbd5e1" font-size="11">WS010105 API + Auto-Search on Load</text>
+
+      <!-- prime.js -->
+      <rect x="18" y="144" width="274" height="82" rx="10" fill="#181c28" stroke="#00a8e1" />
+      <text x="32" y="168" fill="#7dd3fc" font-size="14" font-weight="700">prime.js</text>
+      <text x="32" y="188" fill="#94a3b8" font-size="11.5">primevideo.com / amazon.co.jp</text>
+      <text x="32" y="208" fill="#cbd5e1" font-size="11">Active &lt;video&gt; Picker + SPA Navigation Reset</text>
+
+      <!-- Custom Contributor Adapter -->
+      <rect x="18" y="240" width="274" height="82" rx="10" fill="rgba(16,185,129,0.08)" stroke="#10b981" stroke-dasharray="6,4" />
+      <text x="32" y="264" fill="#6ee7b7" font-size="14" font-weight="700">+ your_player.js</text>
+      <text x="32" y="284" fill="#94a3b8" font-size="11.5">Netflix, Crunchyroll, ABEMA, Bilibili, etc.</text>
+      <text x="32" y="304" fill="#a7f3d0" font-size="11">Register with SubtitlePlayerRegistry.register()</text>
+    </g>
+
+    <!-- Arrows Column 1 -> Column 2 -->
+    <line x1="352" y1="185" x2="412" y2="230" stroke="#ff7849" stroke-width="2" marker-end="url(#arrow)" />
+    <line x1="352" y1="280" x2="412" y2="265" stroke="#ff7849" stroke-width="2" marker-end="url(#arrow)" />
+    <line x1="352" y1="376" x2="412" y2="300" stroke="#ff7849" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrow)" />
+
+    <!-- Column 2: Registry Contract -->
+    <g transform="translate(418, 134)">
+      <rect width="318" height="262" rx="14" fill="#181d2a" stroke="#ff7849" stroke-width="1.5" />
+      <text x="20" y="32" fill="#ff9d7a" font-size="14" font-weight="800">Player Registry (registry.js)</text>
+      <text x="20" y="54" fill="#cbd5e1" font-size="12">SubtitlePlayerRegistry.register(adapter)</text>
+
+      <rect x="18" y="68" width="282" height="176" rx="8" fill="#0d1117" stroke="rgba(255,255,255,0.1)" />
+      <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" fill="#e2e8f0">
+        <text x="30" y="92"><tspan fill="#ff7849">id</tspan>, <tspan fill="#ff7849">name</tspan>, <tspan fill="#ff7849">uiClass</tspan></text>
+        <text x="30" y="114"><tspan fill="#38bdf8">matches</tspan>(location)</text>
+        <text x="30" y="136"><tspan fill="#38bdf8">getVideo</tspan>() → HTMLVideoElement</text>
+        <text x="30" y="158"><tspan fill="#38bdf8">detectWorkInfo</tspan>({ helpers })</text>
+        <text x="30" y="180"><tspan fill="#6ee7b7">defaultSearchKind</tspan>: 'anime'|'drama'</text>
+        <text x="30" y="202"><tspan fill="#6ee7b7">autoSearchOnLoad</tspan>: boolean</text>
+        <text x="30" y="224"><tspan fill="#6ee7b7">resetOnNavigation</tspan>, <tspan fill="#6ee7b7">pollMetadata</tspan></text>
+      </g>
+    </g>
+
+    <!-- Arrows Column 2 -> Column 3 -->
+    <line x1="738" y1="220" x2="796" y2="185" stroke="#ff7849" stroke-width="2" marker-end="url(#arrow)" />
+    <line x1="738" y1="305" x2="796" y2="345" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrowCyan)" />
+
+    <!-- Column 3: Core + Background -->
+    <g transform="translate(802, 96)">
+      <!-- Core Engine -->
+      <rect width="358" height="162" rx="14" fill="#161b26" stroke="rgba(255,255,255,0.16)" />
+      <text x="18" y="30" fill="#ffffff" font-size="14" font-weight="800">Core Overlay Engine</text>
+      <text x="18" y="52" fill="#94a3b8" font-size="11.5">content.js · parser.js · source_profiles.js · i18n.js</text>
+      <text x="18" y="80" fill="#cbd5e1" font-size="12">• Subtitle overlay, drag positioning &amp; fullscreen mount</text>
+      <text x="18" y="102" fill="#cbd5e1" font-size="12">• Click-to-sync transcript drawer &amp; SRT export</text>
+      <text x="18" y="124" fill="#cbd5e1" font-size="12">• Keyboard isolation + Title×Source offset memory</text>
+      <text x="18" y="146" fill="#cbd5e1" font-size="12">• Live i18n switcher (English / 日本語 / 简体中文)</text>
+
+      <!-- Background Worker -->
+      <rect y="180" width="358" height="158" rx="14" fill="#161b26" stroke="rgba(56,189,248,0.45)" />
+      <text x="18" y="210" fill="#7dd3fc" font-size="14" font-weight="800">Background Worker (background.js)</text>
+      <text x="18" y="236" fill="#cbd5e1" font-size="12">• AniList GraphQL franchise &amp; split-cour resolver</text>
+      <text x="18" y="258" fill="#cbd5e1" font-size="12">• Jimaku.cc search + rate-limit-friendly 10m cache</text>
+      <text x="18" y="280" fill="#cbd5e1" font-size="12">• Episode matcher (seasonal / cumulative / partTitle)</text>
+      <text x="18" y="302" fill="#cbd5e1" font-size="12">• Source priority &amp; format (.ass / .srt / .vtt) ranker</text>
+    </g>
+  </g>
+</svg>

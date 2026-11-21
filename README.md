@@ -1,88 +1,205 @@
-# 🎬 dアニメ字幕アシスタント (Chrome拡張機能 ＋ ローカルGPU AI文字起こし)
+<div align="center">
 
-dアニメストア（`animestore.docomo.ne.jp`）の再生プレイヤー上に日本語字幕を重ねて表示するハイブリッドChrome拡張機能です。
+![Multi-Platform Video Subtitle Overlay Banner](docs/images/banner.svg)
 
-## ✨ 3つの字幕モード（すべて搭載）
+# Subtitle Overlay Assistant
 
-1. **🔍 Jimaku.cc 自動検索＆ワンクリック読込（一番おすすめ）**
-   - dアニメの再生ページ（`sc_d_pc?partId=...`）から**作品タイトル・話数を自動検出**し、アニメ日本語字幕データベース [Jimaku.cc](https://jimaku.cc) から該当話の字幕ファイル（`.srt` / `.ass`）を直接検索・適用します。
-2. **📂 手持ち字幕ファイルのドラッグ＆ドロップ読込**
-   - `.srt` / `.ass` / `.ssa` / `.vtt` ファイルを再生画面へ直接ドラッグ＆ドロップするだけで即座に表示します。
-   - OPや提供クレジットの有無で数秒ズレる場合も、`[` / `]` キー（またはパネルの `-5s` / `-0.5s` / `+0.5s` / `+5s` ボタン）で簡単にタイミング調整できます。
-3. **🎙️ ローカルGPU AIリアルタイム文字起こし（字幕が存在しない作品向け）**
-   - 最新話やマイナー作品で字幕ファイルが見つからない場合でも、PCのシステム音声（PipeWire / PulseAudio モニター）をキャプチャし、搭載GPU（RTX 5070 Ti / 4070）上の **Faster-Whisper** でリアルタイムに日本語字幕を生成します。
-   - 起こした字幕は「📥 SRT保存」ボタンから `.srt` ファイルとして保存可能です。
+**A Chrome MV3 extension that brings external subtitles (`.ass`, `.srt`, `.ssa`, `.vtt`) to streaming video players — featuring smart Jimaku.cc + AniList matching, interactive Click-to-Sync, and a plug-and-play Player Adapter architecture.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](extension/manifest.json)
+[![Languages](https://img.shields.io/badge/i18n-EN%20%7C%20日本語%20%7C%20简体中文-eb5528)](extension/i18n.js)
+[![Players](https://img.shields.io/badge/Players-d--anime%20Store%20%7C%20Prime%20Video-00a8e1)](extension/players/registry.js)
+
+**English** | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
+
+</div>
 
 ---
 
-## 🚀 セットアップ手順
+## Visual Showcase
 
-### 1. Chrome / Edge 拡張機能のインストール
-1. ブラウザのアドレスバーに `chrome://extensions/` （Edgeの場合は `edge://extensions/`）と入力して開きます。
-2. 右上の **「デベロッパー モード」** をオンにします。
-3. 左上の **「パッケージ化されていない拡張機能を読み込む」** をクリックし、以下のフォルダを選択します：
-   ```text
-   /home/sing/projects/video-subtitle/extension
+![Feature Showcase](docs/images/demo-showcase.svg)
+
+---
+
+## Why This Extension?
+
+Japanese language learners, deaf/hard-of-hearing viewers, and multi-platform VOD subscribers often run into streaming services that lack selectable subtitles or accurate closed captions.
+
+**Subtitle Overlay Assistant** renders crisp, customizable external subtitles directly on top of your video player (including fullscreen mode), works out of the box on both **d-anime Store** and **Amazon Prime Video**, and separates site-specific player code into clean adapters so anyone can extend it to additional platforms in minutes.
+
+---
+
+## Supported Platforms
+
+| Platform | Adapter | Detection & Search Behavior |
+| :--- | :--- | :--- |
+| **d-anime Store** (`animestore.docomo.ne.jp`) | [`extension/players/danime.js`](extension/players/danime.js) | Extracts title, episode number, and episode subtitle (`partTitle`) via `WS010105` API & DOM; supports automatic search & apply on load. |
+| **Amazon Prime Video** (`primevideo.com`, `amazon.co.jp`) | [`extension/players/prime.js`](extension/players/prime.js) | Picks the largest active `<video>`, reads `atvwebplayersdk` title/subtitle DOM, defaults search category to **Drama / Live-Action** or **Anime**, and resets subtitles automatically on SPA episode changes. |
+| **Your Favorite VOD Site** | Modular Adapter API | Drop in a single file under `extension/players/` — see [Adding a New Player Adapter](#contributor-guide-adding-a-new-player-adapter). |
+
+---
+
+## Key Features
+
+- **Smart Multi-Stage Search (`Jimaku.cc` + `AniList`)**
+  - Resolves sequels, split-cours, and cumulative vs. per-season episode numbering automatically via AniList GraphQL franchise chains.
+  - Preserves legitimate bracketed titles (e.g., `【Oshi no Ko】`) while stripping broadcast/edition noise tags.
+  - Matches episode titles (`partTitle`) for ambiguous compilations or OVAs and supports direct live-action / drama search on Jimaku.cc.
+  - Multi-entry fallback automatically checks alternative Jimaku folders if the top result has no matching episode file, and remembers your preferred entry per series/season.
+- **Expandable & Draggable Source Priority + Default Offset Dictionary**
+  - Clean 1-to-1 ordered list combining **Source Priority** and **Per-Source Default Offset** (for example, `Netflix` defaults to `-1.0s` out of the box).
+  - Collapsed by default so you can adjust priorities and offsets on the fly without cluttering your screen while watching.
+  - Drag rows (`⋮⋮`) to reorder priority at any time, add custom sources, or edit default offsets inline.
+  - `Other` serves as the catch-all fallback: it can be reordered by dragging, while its default offset remains locked at `0.0s` and it cannot be deleted.
+- **Per-Title & Per-Source Memory**
+  - Resolution order when loading subtitles: `Saved Title × Source Offset` → `Saved Title Offset` → `Configured Source Default` → `0.0s`.
+- **Interactive Click-to-Sync Transcript Drawer**
+  - Click any displayed subtitle (or press Enter/Space on it) to open the scrollable transcript drawer (`#danime-sub-lyrics`).
+  - Click the line currently spoken to immediately align the entire subtitle track (**Sync this line to now**), or switch to **Seek mode** to jump the video to any line.
+- **Local File Support & SRT Export**
+  - Supports `.ass`, `.ssa`, `.srt`, and `.vtt` (automatically skipping non-Japanese/CJK style tags in dual-language ASS files).
+  - Drag & drop subtitle files anywhere on the player page, and export timing-ready `.srt` files in one click.
+- **Responsive Styling & Keyboard Ergonomics**
+  - Clean defaults out of the box: **4.5%** responsive font scale relative to video height, **5%** bottom offset, and **0% (transparent)** background with black text outline for crisp legibility.
+  - Full keyboard isolation prevents host player hotkeys (`Space`, `Arrow` keys, `F`, `M`, `Enter`) from hijacking panel inputs.
+  - Masked API key inputs suppress intrusive browser *"Save password?"* prompts.
+- **Full Localization (`English`, `日本語`, `简体中文`)**
+  - Built-in `_locales` manifest localization and instant in-app language switcher synced across the control panel and toolbar popup.
+
+---
+
+## Installation
+
+1. Clone or download this repository:
+   ```bash
+   git clone https://github.com/kysing02/video-subtitle.git
    ```
-
-### 2. Jimaku.cc 自動検索を使う場合（無料）
-1. [Jimaku.cc Account](https://jimaku.cc/account) にログインし、無料の **API Key** をコピーします。
-2. dアニメ再生画面の右上にある **「💬 字幕」** ボタン → **「⚙ 設定」** タブを開き、APIキーを貼り付けて「設定を保存」をクリックします。
-3. **「🔍 自動検索」** タブの「Jimaku.cc から日本語字幕を検索」を押すと、再生中のアニメの字幕が読み込まれます。
-
-### 3. AIリアルタイム字幕（Faster-Whisper）を使う場合（任意）
-ターミナルで以下のスクリプトを実行すると、`uv` 経由で必要なライブラリを自動準備してローカルサーバー（`http://127.0.0.1:8765`）が起動します。
-
-```bash
-cd /home/sing/projects/video-subtitle
-./start_server.sh
-```
-さらに高精度なモデルを使いたい場合は環境変数 `WHISPER_MODEL` を指定できます：
-```bash
-WHISPER_MODEL=large-v3-turbo ./start_server.sh
-```
-サーバー起動後、再生画面の **「💬 字幕」→「🎙️ AIリアルタイム」→「AIリアルタイム字幕を開始」** をクリックしてください。
+2. Open Google Chrome (or Edge / Chromium-based browser) and navigate to `chrome://extensions/`.
+3. Enable **Developer mode** in the top-right corner.
+4. Click **Load unpacked** and select the [`extension/`](extension/) folder inside the cloned repository.
+5. *(Optional for auto-search)* Get a free API Key from [jimaku.cc/account](https://jimaku.cc/account), click the extension icon in your toolbar (or open Settings inside the player panel), and paste your API key.
 
 ---
 
-## ⌨️ ショートカット＆便利機能
-- **`Alt + S`**: 字幕の表示 / 非表示を切り替え
-- **`[`** / **`]`**: 字幕タイミングを `-0.5秒` / `+0.5秒` 微調整
-- **字幕のドラッグ移動**: 画面上の字幕をマウスで上下にドラッグして好きな高さに配置可能
-- **フルスクリーン完全対応**: フルスクリーン切り替え時も自動で字幕が最前面に追従します
+## Keyboard Shortcuts & Controls
 
-## 字幕をクリックしてタイミング調整
+| Action | Shortcut / Interaction |
+| :--- | :--- |
+| Toggle subtitles ON / OFF | `Alt + S` |
+| Adjust timing by `-0.5s` / `+0.5s` | `[` / `]` |
+| Open interactive transcript drawer (Click-to-Sync / Seek) | Click the displayed subtitle text |
+| Move subtitle vertical position | Drag the displayed subtitle text up / down |
+| Fine sync controls (`-5s` to `+5s`) | Footer bar inside the `💬 Subtitles` panel |
 
-- 画面の字幕をクリックすると、前後の台詞をスクロールできる一覧が開きます。字幕のない区間には何も表示しません。
-- 「この台詞を今に合わせる」で、聞こえた台詞をクリックすると、その行の開始を現在の動画時刻に合わせて字幕全体を調整します。正確に合わせるには台詞の開始で動画を一時停止してから選択してください。
-- 「この台詞へ動画を移動」に切り替えると、クリックした行の調整済み開始時刻へ動画を移動します。
-- 「調整リセット」でオフセットをゼロに戻せます。閉じるには × または Escape。字幕の上下ドラッグも引き続き使えます。
-- 調整は現在のセッションに適用されます。SRT保存は元の字幕時刻を出力します。
+---
 
-## Prime Video（試験対応・v1.1.0）
+## Contributor Guide: Adding a New Player Adapter
 
-同じ拡張機能で `www.amazon.co.jp/gp/video/`、`www.amazon.co.jp/Prime-Video/`、`primevideo.com`、`www.primevideo.com` に対応します。
+![Modular Player Adapter Architecture](docs/images/architecture.svg)
 
-1. `chrome://extensions/` で拡張機能を再読み込みし、Primeの動画ページも更新してください。追加したサイトへのアクセス許可が求められた場合は許可してください。
-2. 動画を再生して「💬 字幕」を開きます。検索対象はPrimeでは「ドラマ・実写」が初期値です。アニメを見る場合は切り替えてください。
-3. 作品名・話数を確認して検索し、作品・字幕ファイルを選択してください。Primeの表示構造によってタイトルを検出できない場合は手入力してください。Primeでは自動検索・自動適用は行いません。
-4. ローカルの `.srt` / `.ass` / `.ssa` / `.vtt` ファイルも読み込めます。字幕のクリックで一覧を開き、現在時刻への同期や動画の移動ができます。
-5. 二重字幕になる場合はPrime標準の字幕をオフにしてください。
+Site-specific player integrations live independently under [`extension/players/`](extension/players/). Core overlay rendering, subtitle parsing, transcript sync, localization, and search live outside the adapters.
 
-URL変更または検出した作品・話数の変更時に字幕とタイミング調整をリセットします。検出できない話数切り替えでは手動でクリアし、次話の字幕を読み込んでください。広告や配信版の違いによって途中で同期がずれる場合は再調整してください。
+### 1. Create `extension/players/<site>.js`
 
-ローカルChromeのテスト用ページで主要操作を確認しています。実際のPrimeアカウントでの再生、広告、フルスクリーン、次話への自動遷移は実機確認が必要です。AI文字起こしのシステム音声設定は従来のままです。
+Implement and register an adapter object via `window.SubtitlePlayerRegistry.register(...)`:
 
-### 旧版へ戻す
+```js
+/**
+ * Example Player Adapter for MyVOD
+ */
+(function (root) {
+  'use strict';
 
-Prime対応前の保存済みコミットは `2e7f6d2` です。現在の作業を消さずに旧版を取り出すには、リポジトリで次を実行してください。
+  const registry = root.SubtitlePlayerRegistry;
+  if (!registry) return;
 
-```sh
-git archive --format=zip --output=/tmp/video-subtitle-before-prime.zip 2e7f6d2 extension
+  registry.register({
+    id: 'myvod',
+    name: 'MyVOD',
+    matches: (loc) => /(^|\.)myvod\.example$/.test(loc.hostname),
+
+    // Behavior flags consumed by content.js
+    defaultSearchKind: 'anime', // 'anime' | 'drama'
+    autoSearchOnLoad: true,     // true = auto-search & apply when metadata changes
+    resetOnNavigation: true,    // true = clear loaded cues on SPA URL change
+    pollMetadata: true,         // true = re-check work/episode DOM periodically
+    alwaysResolveVideo: false,  // true = re-query active <video> on every render tick
+    uiClass: '',                // Optional CSS class added to #danime-sub-fab & #danime-sub-panel
+
+    // Return the active HTMLVideoElement
+    getVideo() {
+      return document.querySelector('video');
+    },
+
+    // Extract { partId, workTitle, cleanTitle, partDispNumber, partTitle, episodeNumber }
+    async detectWorkInfo({ cleanWorkTitle, parseEpisodeNumber }) {
+      const rawTitle = document.querySelector('.player-title')?.textContent?.trim() || '';
+      const rawEp = document.querySelector('.player-episode')?.textContent?.trim() || '';
+      if (!rawTitle) return null;
+      return {
+        partId: location.pathname,
+        workTitle: rawTitle,
+        cleanTitle: cleanWorkTitle(rawTitle),
+        partDispNumber: rawEp,
+        partTitle: '',
+        episodeNumber: parseEpisodeNumber(rawEp),
+      };
+    },
+  });
+})(typeof window !== 'undefined' ? window : globalThis);
 ```
 
-ZIPを任意の場所へ展開し、Chromeで新版を無効にしてから、展開した `extension` フォルダを「パッケージ化されていない拡張機能を読み込む」で選択してください。
+### 2. Register permissions & script order in `extension/manifest.json`
 
-### 開発用チェック
+1. Add your site's origin pattern to `host_permissions` and `content_scripts[0].matches`.
+2. Add `"players/<site>.js"` to `content_scripts[0].js` right after `"players/registry.js"` and before `"content.js"`.
 
-`python3 tests/build-browser-fixture.py` を実行し、生成された `/tmp/prime-subtitle-test.html` をChromeで開くと、結果が `PASS` または `FAIL` と表示されます。これはPrimeのDOMとAPIを模したテストで、実サービスへは接続しません。
+### 3. Run Local Browser & Syntax Checks
+
+```bash
+# Validate JS syntax & JSON manifests
+node -c extension/players/<site>.js extension/content.js extension/background.js
+python3 -c "import json; json.load(open('extension/manifest.json'))"
+
+# Build isolated offline browser fixtures and run headless Chrome verification
+python3 tests/build-browser-fixture.py
+python3 tests/build-browser-fixture.py --search
+google-chrome --headless --disable-gpu --no-sandbox --dump-dom "file:///tmp/prime-subtitle-test.html" | grep 'id="result"'
+google-chrome --headless --disable-gpu --no-sandbox --dump-dom "file:///tmp/subtitle-search-test.html" | grep 'id="result"'
+```
+
+---
+
+## Project Structure & Branches
+
+```text
+.
+├── extension/
+│   ├── _locales/              # Chrome MV3 extension metadata (en, ja, zh_CN)
+│   ├── players/
+│   │   ├── registry.js        # Player adapter registry & backwards-compatible facade
+│   │   ├── danime.js          # d-anime Store adapter
+│   │   └── prime.js           # Amazon Prime Video adapter
+│   ├── background.js          # Service worker: AniList + Jimaku API & ranking
+│   ├── content.js             # Core UI, overlay sync, shortcuts, storage sync
+│   ├── i18n.js                # Runtime EN / JA / ZH-CN UI catalog
+│   ├── parser.js              # .ass / .ssa / .srt / .vtt parser & SRT exporter
+│   ├── source_profiles.js     # Expandable draggable source priority & offset editor
+│   ├── popup.html / popup.js  # Toolbar popup UI
+│   ├── styles.css             # Overlay, transcript drawer & panel styling
+│   └── manifest.json          # Chrome Manifest V3 configuration
+├── docs/images/               # Showcase & architecture SVGs
+└── tests/                     # Offline browser fixtures & regression tests
+```
+
+- `main`: Stable production release branch.
+- `dev`: Integration branch for upcoming stable releases.
+- `feat/ai-realtime`: Experimental real-time AI speech-to-text transcription branch (kept separate from `main` / `dev` while under active development).
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).

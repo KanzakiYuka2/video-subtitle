@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-label="Multi-Platform Video Subtitle Overlay Banner">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d1117" />
+      <stop offset="55%" stop-color="#141824" />
+      <stop offset="100%" stop-color="#1a1625" />
+    </linearGradient>
+    <radialGradient id="glowOrange" cx="18%" cy="22%" r="48%">
+      <stop offset="0%" stop-color="#eb5528" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#eb5528" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowCyan" cx="85%" cy="75%" r="52%">
+      <stop offset="0%" stop-color="#00a8e1" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#00a8e1" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="accentBtn" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#eb5528" />
+      <stop offset="100%" stop-color="#ff7849" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="360" rx="18" fill="url(#bgGrad)" />
+  <rect width="1200" height="360" rx="18" fill="url(#glowOrange)" />
+  <rect width="1200" height="360" rx="18" fill="url(#glowCyan)" />
+  <rect x="1" y="1" width="1198" height="358" rx="17" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" />
+
+  <!-- Subtle Grid Lines -->
+  <g stroke="rgba(255,255,255,0.035)" stroke-width="1">
+    <line x1="0" y1="90" x2="1200" y2="90" />
+    <line x1="0" y1="180" x2="1200" y2="180" />
+    <line x1="0" y1="270" x2="1200" y2="270" />
+    <line x1="300" y1="0" x2="300" y2="360" />
+    <line x1="600" y1="0" x2="600" y2="360" />
+    <line x1="900" y1="0" x2="900" y2="360" />
+  </g>
+
+  <!-- Left Content -->
+  <g font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans JP', 'PingFang SC', sans-serif">
+    <!-- Top Tag -->
+    <rect x="52" y="42" width="430" height="28" rx="14" fill="rgba(235,85,40,0.16)" stroke="rgba(255,120,73,0.45)" />
+    <text x="267" y="61" text-anchor="middle" fill="#ff9d7a" font-size="12" font-weight="700" letter-spacing="0.7">CHROME MV3 · MODULAR VOD ADAPTERS · EN / 日本語 / 简体中文</text>
+
+    <!-- Title -->
+    <text x="52" y="124" fill="#ffffff" font-size="38" font-weight="800">Multi-Platform Video</text>
+    <text x="52" y="168" fill="url(#accentBtn)" font-size="38" font-weight="800">Subtitle Overlay Assistant</text>
+
+    <!-- Subtitle -->
+    <text x="52" y="208" fill="#cbd5e1" font-size="16">Overlay external <tspan fill="#ffffff" font-weight="600">.ass / .srt / .vtt</tspan> subtitles on any supported streaming player.</text>
+    <text x="52" y="232" fill="#94a3b8" font-size="15">Jimaku.cc + AniList smart matching, Click-to-Sync transcript, and per-source auto-offset.</text>
+
+    <!-- Chips -->
+    <g transform="translate(52, 268)" font-size="12.5" font-weight="600">
+      <rect x="0" y="0" width="124" height="32" rx="8" fill="rgba(235,85,40,0.2)" stroke="#eb5528" />
+      <text x="62" y="21" text-anchor="middle" fill="#ffae92">d-anime Store</text>
+
+      <rect x="136" y="0" width="152" height="32" rx="8" fill="rgba(0,168,225,0.18)" stroke="#00a8e1" />
+      <text x="212" y="21" text-anchor="middle" fill="#7dd3fc">Amazon Prime Video</text>
+
+      <rect x="300" y="0" width="156" height="32" rx="8" fill="rgba(16,185,129,0.15)" stroke="#10b981" />
+      <text x="378" y="21" text-anchor="middle" fill="#6ee7b7">Extensible Adapters</text>
+
+      <rect x="468" y="0" width="136" height="32" rx="8" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.22)" />
+      <text x="536" y="21" text-anchor="middle" fill="#e2e8f0">Click-to-Sync UI</text>
+    </g>
+  </g>
+
+  <!-- Right Mockup Player -->
+  <g transform="translate(716, 40)" font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans JP', sans-serif">
+    <rect x="0" y="0" width="432" height="278" rx="14" fill="#0b0e14" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" />
+    <!-- Mock scene gradient -->
+    <rect x="10" y="10" width="412" height="218" rx="8" fill="#171e2e" />
+    <path d="M10 170 Q130 120 240 165 T422 145 L422 228 L10 228 Z" fill="#1f2937" opacity="0.7" />
+    <circle cx="96" cy="82" r="28" fill="#eb5528" opacity="0.22" />
+    <circle cx="348" cy="96" r="38" fill="#00a8e1" opacity="0.16" />
+
+    <!-- Top-right FAB Pill -->
+    <rect x="258" y="22" width="152" height="28" rx="14" fill="url(#accentBtn)" />
+    <text x="294" y="41" fill="#ffffff" font-size="12" font-weight="700">💬 Subtitles</text>
+    <rect x="352" y="26" width="50" height="20" rx="10" fill="rgba(0,0,0,0.35)" />
+    <text x="377" y="40" text-anchor="middle" fill="#ffffff" font-size="10.5" font-weight="600">Jimaku</text>
+
+    <!-- Mini Offset Pill -->
+    <rect x="22" y="22" width="156" height="26" rx="8" fill="rgba(0,0,0,0.62)" stroke="rgba(255,255,255,0.16)" />
+    <text x="100" y="39" text-anchor="middle" fill="#f8fafc" font-size="11" font-weight="600">Netflix Default: <tspan fill="#ff8f66">-1.0s</tspan></text>
+
+    <!-- Transparent Crisp Subtitle Overlay at 5% bottom (0% bg) -->
+    <text x="216" y="197" text-anchor="middle" fill="#000000" stroke="#000000" stroke-width="4.5" stroke-linejoin="round" font-size="18.5" font-weight="700">「ここから先が、本当の見せ場だね。」</text>
+    <text x="216" y="197" text-anchor="middle" fill="#ffffff" font-size="18.5" font-weight="700">「ここから先が、本当の見せ場だね。」</text>
+
+    <!-- Scrub Bar -->
+    <rect x="22" y="246" width="388" height="5" rx="2.5" fill="rgba(255,255,255,0.16)" />
+    <rect x="22" y="246" width="218" height="5" rx="2.5" fill="#eb5528" />
+    <circle cx="240" cy="248.5" r="6" fill="#ff7849" />
+    <text x="22" y="267" fill="#94a3b8" font-size="11">12:34 / 23:40</text>
+    <text x="410" y="267" text-anchor="end" fill="#94a3b8" font-size="11">Font 4.5% · Bottom 5% · Bg 0%</text>
+  </g>
+</svg>
