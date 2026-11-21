@@ -1,188 +1,73 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" width="1200" height="720" role="img" aria-label="Feature Showcase for d-anime Store, Amazon Prime Video, Click-to-Sync, and Source-Offset Dictionary">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" width="1200" height="380" role="img" aria-label="Anime Subtitle Extension Feature Overview">
   <defs>
-    <linearGradient id="canvasGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#0b0f17" />
       <stop offset="100%" stop-color="#131824" />
     </linearGradient>
-    <linearGradient id="orangePill" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#eb5528" />
-      <stop offset="100%" stop-color="#ff7849" />
-    </linearGradient>
+    <marker id="flowArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,1 L7,4 L0,7 Z" fill="#ff7849" />
+    </marker>
   </defs>
 
-  <rect width="1200" height="720" rx="18" fill="url(#canvasGrad)" />
-  <rect x="1" y="1" width="1198" height="718" rx="17" fill="none" stroke="rgba(255,255,255,0.12)" />
+  <rect width="1200" height="380" rx="18" fill="url(#bg)" />
+  <rect x="1" y="1" width="1198" height="378" rx="17" fill="none" stroke="rgba(255,255,255,0.12)" />
 
-  <g font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans JP', 'PingFang SC', sans-serif">
-    <!-- Header -->
-    <text x="36" y="42" fill="#ffffff" font-size="22" font-weight="800">Key Capabilities &amp; UI Showcase</text>
-    <text x="36" y="64" fill="#94a3b8" font-size="13.5">Seamless subtitle overlay across d-anime Store &amp; Amazon Prime Video with real-time timing sync and configurable source rules</text>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', 'Noto Sans JP', sans-serif">
+    <!-- Left Card: Auto-Match & Overlay -->
+    <g transform="translate(36, 28)">
+      <rect width="554" height="324" rx="14" fill="#161b26" stroke="rgba(255,255,255,0.12)" />
+      <text x="24" y="36" fill="#ffffff" font-size="17" font-weight="800">Auto-Match &amp; Overlay</text>
 
-    <!-- Card 1: Dual Player Support -->
-    <g transform="translate(36, 84)">
-      <rect width="554" height="292" rx="14" fill="#161b26" stroke="rgba(255,255,255,0.12)" />
-      <text x="20" y="30" fill="#ff9d7a" font-size="14" font-weight="700">1. Multi-Player Overlay (d-anime Store &amp; Amazon Prime Video)</text>
+      <!-- Platform Pills + Search Pipeline -->
+      <rect x="24" y="56" width="120" height="30" rx="8" fill="rgba(235,85,40,0.18)" stroke="#eb5528" />
+      <text x="84" y="76" text-anchor="middle" fill="#ffae92" font-size="12" font-weight="700">d-anime Store</text>
 
-      <!-- d-anime mini window -->
-      <rect x="20" y="46" width="250" height="196" rx="10" fill="#0b0e14" stroke="rgba(235,85,40,0.55)" />
-      <rect x="30" y="56" width="112" height="22" rx="6" fill="rgba(235,85,40,0.22)" />
-      <text x="86" y="71" text-anchor="middle" fill="#ff9d7a" font-size="11" font-weight="700">d-anime Store</text>
-      <rect x="164" y="56" width="96" height="22" rx="11" fill="url(#orangePill)" />
-      <text x="212" y="71" text-anchor="middle" fill="#ffffff" font-size="10.5" font-weight="700">💬 Auto-Apply</text>
-      <text x="145" y="138" text-anchor="middle" fill="#64748b" font-size="11">WS010105 Metadata</text>
-      <text x="145" y="155" text-anchor="middle" fill="#64748b" font-size="11">+ AniList Split-Cour</text>
-      <text x="145" y="208" text-anchor="middle" fill="#000000" stroke="#000000" stroke-width="3.5" stroke-linejoin="round" font-size="13.5" font-weight="700">「今日から第2期だね！」</text>
-      <text x="145" y="208" text-anchor="middle" fill="#ffffff" font-size="13.5" font-weight="700">「今日から第2期だね！」</text>
-      <rect x="32" y="226" width="226" height="4" rx="2" fill="#eb5528" />
+      <rect x="154" y="56" width="120" height="30" rx="8" fill="rgba(0,168,225,0.16)" stroke="#00a8e1" />
+      <text x="214" y="76" text-anchor="middle" fill="#7dd3fc" font-size="12" font-weight="700">Prime Video</text>
 
-      <!-- Prime Video mini window -->
-      <rect x="284" y="46" width="250" height="196" rx="10" fill="#0b0e14" stroke="rgba(0,168,225,0.55)" />
-      <rect x="294" y="56" width="118" height="22" rx="6" fill="rgba(0,168,225,0.22)" />
-      <text x="353" y="71" text-anchor="middle" fill="#7dd3fc" font-size="11" font-weight="700">Prime Video</text>
-      <rect x="434" y="56" width="90" height="22" rx="11" fill="#0284c7" />
-      <text x="479" y="71" text-anchor="middle" fill="#ffffff" font-size="10.5" font-weight="700">💬 Drama/JP</text>
-      <text x="409" y="138" text-anchor="middle" fill="#64748b" font-size="11">SPA Episode Reset</text>
-      <text x="409" y="155" text-anchor="middle" fill="#64748b" font-size="11">+ Largest Visible &lt;video&gt;</text>
-      <text x="409" y="208" text-anchor="middle" fill="#000000" stroke="#000000" stroke-width="3.5" stroke-linejoin="round" font-size="13.5" font-weight="700">「事件の真相が分かった」</text>
-      <text x="409" y="208" text-anchor="middle" fill="#ffffff" font-size="13.5" font-weight="700">「事件の真相が分かった」</text>
-      <rect x="296" y="226" width="226" height="4" rx="2" fill="#00a8e1" />
+      <line x1="286" y1="71" x2="328" y2="71" stroke="#ff7849" stroke-width="2" marker-end="url(#flowArrow)" />
 
-      <text x="20" y="272" fill="#94a3b8" font-size="12">Defaults: <tspan fill="#e2e8f0" font-weight="600">Font 4.5%</tspan> (responsive to video height) · <tspan fill="#e2e8f0" font-weight="600">Bottom 5%</tspan> (draggable) · <tspan fill="#e2e8f0" font-weight="600">Bg 0% Transparent</tspan></text>
+      <rect x="338" y="56" width="192" height="30" rx="8" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.16)" />
+      <text x="434" y="76" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600">AniList + Jimaku.cc</text>
+
+      <!-- Clean Player Overlay Frame -->
+      <rect x="24" y="106" width="506" height="190" rx="10" fill="#0b0e14" stroke="rgba(255,255,255,0.14)" />
+      <rect x="40" y="122" width="180" height="24" rx="6" fill="rgba(255,255,255,0.07)" />
+      <text x="130" y="138" text-anchor="middle" fill="#cbd5e1" font-size="11.5" font-weight="600">Anime Title · Ep 25</text>
+
+      <text x="277" y="252" text-anchor="middle" fill="#000000" stroke="#000000" stroke-width="4" stroke-linejoin="round" font-size="19" font-weight="700">「大丈夫、きっとうまくいくよ。」</text>
+      <text x="277" y="252" text-anchor="middle" fill="#ffffff" font-size="19" font-weight="700">「大丈夫、きっとうまくいくよ。」</text>
+
+      <rect x="44" y="274" width="466" height="4" rx="2" fill="rgba(255,255,255,0.15)" />
+      <rect x="44" y="274" width="290" height="4" rx="2" fill="#eb5528" />
     </g>
 
-    <!-- Card 2: Click-to-Sync Transcript Drawer -->
-    <g transform="translate(610, 84)">
-      <rect width="554" height="292" rx="14" fill="#161b26" stroke="rgba(255,255,255,0.12)" />
-      <text x="20" y="30" fill="#ff9d7a" font-size="14" font-weight="700">2. Click-to-Sync Transcript Drawer (#danime-sub-lyrics)</text>
+    <!-- Right Card: Click-to-Sync & Source Offset -->
+    <g transform="translate(610, 28)">
+      <rect width="554" height="324" rx="14" fill="#161b26" stroke="rgba(255,255,255,0.12)" />
+      <text x="24" y="36" fill="#ffffff" font-size="17" font-weight="800">Click-to-Sync &amp; Source Offset</text>
 
-      <!-- Drawer UI -->
-      <rect x="24" y="48" width="506" height="196" rx="10" fill="rgba(12,14,20,0.92)" stroke="rgba(255,255,255,0.18)" />
-      <!-- Toolbar -->
-      <rect x="36" y="60" width="230" height="26" rx="6" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.15)" />
-      <text x="48" y="77" fill="#f8fafc" font-size="11.5" font-weight="600">▾ Sync this line to now (or Seek)</text>
-      <rect x="276" y="60" width="76" height="26" rx="6" fill="rgba(255,255,255,0.1)" />
-      <text x="314" y="77" text-anchor="middle" fill="#e2e8f0" font-size="11.5">Reset</text>
-      <rect x="498" y="60" width="26" height="26" rx="6" fill="rgba(255,255,255,0.1)" />
-      <text x="511" y="77" text-anchor="middle" fill="#e2e8f0" font-size="13">×</text>
+      <!-- Mini Transcript Sync Box -->
+      <rect x="24" y="56" width="506" height="106" rx="10" fill="#0d1117" stroke="rgba(255,255,255,0.14)" />
+      <text x="40" y="82" fill="#64748b" font-size="12">01:38.2   でも、それだけじゃない。</text>
+      <rect x="34" y="92" width="486" height="32" rx="6" fill="rgba(235,85,40,0.24)" stroke="#eb5528" />
+      <text x="44" y="113" fill="#ffffff" font-size="13" font-weight="700">01:42.3   「ここから先が、本当の見せ場だね。」</text>
+      <text x="506" y="113" text-anchor="end" fill="#ff9d7a" font-size="11.5" font-weight="700">Click to sync</text>
+      <text x="40" y="146" fill="#64748b" font-size="12">01:46.8   準備はできているか？</text>
 
-      <!-- Help bar -->
-      <text x="36" y="104" fill="#94a3b8" font-size="11">Click any dialogue line to align whole subtitle track instantly with current playback time.</text>
+      <!-- Compact Source Priority & Default Offset List -->
+      <g transform="translate(24, 178)">
+        <rect width="506" height="34" rx="7" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" />
+        <text x="16" y="22" fill="#94a3b8" font-size="12">⋮⋮  1   ABEMA</text>
+        <text x="486" y="22" text-anchor="end" fill="#cbd5e1" font-size="12" font-weight="600">0.0s</text>
 
-      <!-- Cue list rows -->
-      <rect x="36" y="114" width="482" height="26" rx="5" fill="rgba(255,255,255,0.03)" />
-      <text x="48" y="131" fill="#94a3b8" font-size="12">1:38.2   でも、それだけじゃないんだ。</text>
+        <rect y="42" width="506" height="34" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.08)" />
+        <text x="16" y="64" fill="#94a3b8" font-size="12">⋮⋮  2   Other</text>
+        <text x="486" y="64" text-anchor="end" fill="#94a3b8" font-size="12">0.0s Fixed 🔒</text>
 
-      <rect x="36" y="144" width="482" height="28" rx="5" fill="rgba(235,85,40,0.28)" stroke="#eb5528" />
-      <text x="48" y="162" fill="#ffffff" font-size="12.5" font-weight="700">1:42.3   「ここから先が、本当の見せ場だね。」  ← Click to Sync</text>
-
-      <rect x="36" y="176" width="482" height="26" rx="5" fill="rgba(255,255,255,0.03)" />
-      <text x="48" y="193" fill="#94a3b8" font-size="12">1:46.8   準備はできているか？</text>
-
-      <rect x="36" y="206" width="482" height="26" rx="5" fill="rgba(255,255,255,0.03)" />
-      <text x="48" y="223" fill="#94a3b8" font-size="12">1:51.0   さあ、始めよう。</text>
-
-      <text x="20" y="272" fill="#94a3b8" font-size="12">Triggered by clicking the subtitle overlay · Also supports <tspan fill="#e2e8f0" font-weight="600">[ / ]</tspan> (±0.5s) and <tspan fill="#e2e8f0" font-weight="600">Alt+S</tspan> toggle</text>
-    </g>
-
-    <!-- Card 3: Expandable Draggable Source Dictionary -->
-    <g transform="translate(36, 396)">
-      <rect width="554" height="292" rx="14" fill="#161b26" stroke="rgba(255,255,255,0.12)" />
-      <text x="20" y="30" fill="#ff9d7a" font-size="14" font-weight="700">3. Expandable &amp; Draggable Source Priority + Offset Dictionary</text>
-
-      <!-- Accordion panel -->
-      <rect x="20" y="46" width="514" height="214" rx="10" fill="#0d1117" stroke="rgba(255,255,255,0.16)" />
-      <rect x="20" y="46" width="514" height="32" rx="10" fill="rgba(255,255,255,0.06)" />
-      <text x="34" y="67" fill="#f8fafc" font-size="12" font-weight="700">Source Priority &amp; Default Offset</text>
-      <text x="514" y="67" text-anchor="end" fill="#94a3b8" font-size="11">▲ Collapse while watching</text>
-
-      <!-- Row 1 -->
-      <g transform="translate(30, 86)">
-        <rect width="494" height="28" rx="6" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" />
-        <text x="12" y="18" fill="#94a3b8" font-size="12">⋮⋮</text>
-        <rect x="30" y="5" width="22" height="18" rx="4" fill="rgba(235,85,40,0.2)" />
-        <text x="41" y="18" text-anchor="middle" fill="#ff7849" font-size="10.5" font-weight="700">1</text>
-        <text x="64" y="18" fill="#f8fafc" font-size="12" font-weight="600">ABEMA</text>
-        <rect x="406" y="4" width="52" height="20" rx="4" fill="rgba(0,0,0,0.45)" stroke="rgba(255,255,255,0.15)" />
-        <text x="432" y="18" text-anchor="middle" fill="#ffffff" font-size="11">0.0s</text>
-        <text x="476" y="18" text-anchor="middle" fill="#94a3b8" font-size="13">×</text>
-      </g>
-
-      <!-- Row 2 -->
-      <g transform="translate(30, 120)">
-        <rect width="494" height="28" rx="6" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" />
-        <text x="12" y="18" fill="#94a3b8" font-size="12">⋮⋮</text>
-        <rect x="30" y="5" width="22" height="18" rx="4" fill="rgba(235,85,40,0.2)" />
-        <text x="41" y="18" text-anchor="middle" fill="#ff7849" font-size="10.5" font-weight="700">2</text>
-        <text x="64" y="18" fill="#f8fafc" font-size="12" font-weight="600">DMMTV · U-NEXT · Amazon</text>
-        <rect x="406" y="4" width="52" height="20" rx="4" fill="rgba(0,0,0,0.45)" stroke="rgba(255,255,255,0.15)" />
-        <text x="432" y="18" text-anchor="middle" fill="#ffffff" font-size="11">0.0s</text>
-        <text x="476" y="18" text-anchor="middle" fill="#94a3b8" font-size="13">×</text>
-      </g>
-
-      <!-- Row 5: Other (Locked) -->
-      <g transform="translate(30, 154)">
-        <rect width="494" height="28" rx="6" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.14)" />
-        <text x="12" y="18" fill="#94a3b8" font-size="12">⋮⋮</text>
-        <rect x="30" y="5" width="22" height="18" rx="4" fill="rgba(235,85,40,0.2)" />
-        <text x="41" y="18" text-anchor="middle" fill="#ff7849" font-size="10.5" font-weight="700">5</text>
-        <text x="64" y="18" fill="#e2e8f0" font-size="12" font-weight="600">Other</text>
-        <rect x="394" y="4" width="66" height="20" rx="4" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.14)" />
-        <text x="427" y="18" text-anchor="middle" fill="#cbd5e1" font-size="10.5">0.0s Fixed</text>
-        <text x="476" y="18" text-anchor="middle" fill="#94a3b8" font-size="11">🔒</text>
-      </g>
-
-      <!-- Row 6: Netflix (-1.0s) -->
-      <g transform="translate(30, 188)">
-        <rect width="494" height="28" rx="6" fill="rgba(235,85,40,0.14)" stroke="#eb5528" />
-        <text x="12" y="18" fill="#ff9d7a" font-size="12">⋮⋮</text>
-        <rect x="30" y="5" width="22" height="18" rx="4" fill="rgba(235,85,40,0.28)" />
-        <text x="41" y="18" text-anchor="middle" fill="#ff7849" font-size="10.5" font-weight="700">6</text>
-        <text x="64" y="18" fill="#ffffff" font-size="12" font-weight="700">Netflix</text>
-        <rect x="406" y="4" width="52" height="20" rx="4" fill="rgba(0,0,0,0.5)" stroke="#ff7849" />
-        <text x="432" y="18" text-anchor="middle" fill="#ff9d7a" font-size="11" font-weight="700">-1.0s</text>
-        <text x="476" y="18" text-anchor="middle" fill="#94a3b8" font-size="13">×</text>
-      </g>
-
-      <text x="32" y="246" fill="#94a3b8" font-size="11">+ Add custom source (e.g. Crunchyroll, SubsPlease) · Drag handles reorder priority immediately</text>
-      <text x="20" y="278" fill="#94a3b8" font-size="12">1-to-1 dictionary syncs in real time · <tspan fill="#e2e8f0" font-weight="600">Other</tspan> stays undeletable &amp; locked at 0.0s (still draggable)</text>
-    </g>
-
-    <!-- Card 4: Intelligent Search & Memory Pipeline -->
-    <g transform="translate(610, 396)">
-      <rect width="554" height="292" rx="14" fill="#161b26" stroke="rgba(255,255,255,0.12)" />
-      <text x="20" y="30" fill="#ff9d7a" font-size="14" font-weight="700">4. Franchise &amp; Split-Cour Matching + Persistent Memory</text>
-
-      <!-- Step Boxes -->
-      <g transform="translate(24, 52)">
-        <rect width="506" height="44" rx="8" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" />
-        <circle cx="24" cy="22" r="11" fill="#eb5528" />
-        <text x="24" y="26" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="700">1</text>
-        <text x="46" y="19" fill="#ffffff" font-size="12" font-weight="700">Title Normalization &amp; Adapter Extraction</text>
-        <text x="46" y="35" fill="#94a3b8" font-size="11">Preserves titles like 【Oshi no Ko】 while stripping edition tags &amp; extracting episodes</text>
-      </g>
-
-      <g transform="translate(24, 108)">
-        <rect width="506" height="44" rx="8" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" />
-        <circle cx="24" cy="22" r="11" fill="#eb5528" />
-        <text x="24" y="26" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="700">2</text>
-        <text x="46" y="19" fill="#ffffff" font-size="12" font-weight="700">AniList Sequel Chain + Cumulative ↔ Per-Season Fallback</text>
-        <text x="46" y="35" fill="#94a3b8" font-size="11">Maps Ep 25 → Season 2 Ep 1 or Attack on Titan / TenSura split-cour numbering automatically</text>
-      </g>
-
-      <g transform="translate(24, 164)">
-        <rect width="506" height="44" rx="8" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" />
-        <circle cx="24" cy="22" r="11" fill="#eb5528" />
-        <text x="24" y="26" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="700">3</text>
-        <text x="46" y="19" fill="#ffffff" font-size="12" font-weight="700">Per-Title × Source Offset &amp; Chosen Entry Memory</text>
-        <text x="46" y="35" fill="#94a3b8" font-size="11">Priority: Title×Source → Title → Source Dictionary Default (e.g. Netflix -1.0s) → 0.0s</text>
-      </g>
-
-      <g transform="translate(24, 220)">
-        <rect width="506" height="44" rx="8" fill="rgba(16,185,129,0.12)" stroke="rgba(16,185,129,0.4)" />
-        <circle cx="24" cy="22" r="11" fill="#10b981" />
-        <text x="24" y="26" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="700">✓</text>
-        <text x="46" y="19" fill="#6ee7b7" font-size="12" font-weight="700">Language Switcher (EN / 日本語 / 简体中文) &amp; Zero Password Popups</text>
-        <text x="46" y="35" fill="#94a3b8" font-size="11">Masked API Key inputs suppress browser "Save Password?" prompts on every page</text>
+        <rect y="84" width="506" height="34" rx="7" fill="rgba(235,85,40,0.14)" stroke="#eb5528" />
+        <text x="16" y="106" fill="#ffffff" font-size="12" font-weight="700">⋮⋮  3   Netflix</text>
+        <text x="486" y="106" text-anchor="end" fill="#ff9d7a" font-size="12" font-weight="700">-1.0s</text>
       </g>
     </g>
   </g>

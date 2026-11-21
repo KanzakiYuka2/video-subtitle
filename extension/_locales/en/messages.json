@@ -1,10 +1,10 @@
 {
   "extName": {
-    "message": "Subtitle Overlay Assistant — Multi-Platform VOD",
+    "message": "Anime Subtitle Extension (d-anime & Prime Video)",
     "description": "Extension name shown in browser toolbar and extensions page"
   },
   "extDescription": {
-    "message": "Overlay external ASS/SRT/VTT subtitles on streaming video players with Jimaku.cc auto-search, smart sync, and modular player adapters.",
+    "message": "Add Japanese subtitles (.ass/.srt/.vtt) to anime on d-anime Store and Prime Video with Jimaku.cc auto-search and 1-click timing sync.",
     "description": "Extension description"
   }
 }
