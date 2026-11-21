@@ -128,7 +128,7 @@
     let s = rawTitle
       .replace(/【[^】]*(?:版|放送|配信|ver|限定|特典|吹替|字幕|年齢|R\d+|禁|Web)[^】]*】/gi, ' ')
       .replace(/\[[^\]]*(?:版|放送|配信|ver|限定|特典|吹替|字幕|年齢|R\d+|禁|Web)[^\]]*\]/gi, ' ')
-      .replace(/[（(＜<][^）)＞>]*(?:版|吹替|字幕|放送|オンエア)[^）)＞>]*[）)＞>]/gi, ' ')
+      .replace(/[（(＜<][^）)＞>]*(?:版|吹替|字幕|放送|オンエア|オンデマンド|アニメタイムズ|dアニメストア|Prime Video|FOD|チャンネル|Channel|見放題)[^）)＞>]*[）)＞>]/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -1653,6 +1653,12 @@
       }
     }, 1000);
   }
+
+  window.addEventListener('dsub:prime-episode-click', () => {
+    const epInput = panelEl?.querySelector('#dsub-search-ep');
+    if (epInput) delete epInput.dataset.userEdited;
+    detectWorkInfo();
+  });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
