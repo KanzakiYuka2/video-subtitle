@@ -7,7 +7,7 @@
 **一款用于在 d-anime Store 与 Amazon Prime Video 观看动漫时叠加日语外挂字幕（`.ass` / `.srt` / `.ssa` / `.vtt`）的 Chrome 扩展——支持 Jimaku.cc + AniList 自动检索与点击台词一键对齐时间轴。**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/kysing02/video-subtitle?label=Release&color=10b981)](https://github.com/kysing02/video-subtitle/releases/latest)
+[![Release](https://img.shields.io/github/v/release/kysing02/anime-subtitle-extension?label=Release&color=10b981)](https://github.com/kysing02/anime-subtitle-extension/releases/latest)
 [![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](extension/manifest.json)
 [![Languages](https://img.shields.io/badge/i18n-EN%20%7C%20日本語%20%7C%20简体中文-eb5528)](extension/i18n.js)
 [![Supported Sites](https://img.shields.io/badge/Players-d--anime%20Store%20%7C%20Prime%20Video-00a8e1)](extension/manifest.json)
@@ -46,10 +46,10 @@
 ## 快速安装
 
 1. **获取扩展程序**：
-   - **推荐方式**：前往 **[Releases 页面](https://github.com/kysing02/video-subtitle/releases)** 下载最新版 `anime-subtitle-extension-v*.zip` 并解压。
+   - **推荐方式**：前往 **[Releases 页面](https://github.com/kysing02/anime-subtitle-extension/releases)** 下载最新版 `anime-subtitle-extension-v*.zip` 并解压。
    - **或使用 Git 克隆**：
      ```bash
-     git clone https://github.com/kysing02/video-subtitle.git
+     git clone https://github.com/kysing02/anime-subtitle-extension.git
      ```
 2. 在 Chrome 打开 `chrome://extensions/` 并开启右上角的 **开发者模式**。
 3. 点击 **加载已解压的扩展程序**，选择解压后的文件夹（若使用 Git 克隆，则选择 [`extension/`](extension/) 目录）。

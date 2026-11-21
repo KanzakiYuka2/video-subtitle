@@ -7,7 +7,7 @@
 **dアニメストア・Amazon Prime Video でのアニメ視聴時に日本語字幕（`.ass` / `.srt` / `.ssa` / `.vtt`）を重ねて表示できる Chrome 拡張機能。Jimaku.cc + AniList の自動検索と、台詞クリックによる 1 クリック同期に対応しています。**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/kysing02/video-subtitle?label=Release&color=10b981)](https://github.com/kysing02/video-subtitle/releases/latest)
+[![Release](https://img.shields.io/github/v/release/kysing02/anime-subtitle-extension?label=Release&color=10b981)](https://github.com/kysing02/anime-subtitle-extension/releases/latest)
 [![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white)](extension/manifest.json)
 [![Languages](https://img.shields.io/badge/i18n-EN%20%7C%20日本語%20%7C%20简体中文-eb5528)](extension/i18n.js)
 [![Supported Sites](https://img.shields.io/badge/Players-d--anime%20Store%20%7C%20Prime%20Video-00a8e1)](extension/manifest.json)
@@ -46,10 +46,10 @@
 ## かんたんセットアップ
 
 1. **拡張機能を取得します**：
-   - **おすすめ**: **[Releases ページ](https://github.com/kysing02/video-subtitle/releases)** から最新の `anime-subtitle-extension-v*.zip` をダウンロードして解凍します。
+   - **おすすめ**: **[Releases ページ](https://github.com/kysing02/anime-subtitle-extension/releases)** から最新の `anime-subtitle-extension-v*.zip` をダウンロードして解凍します。
    - **Git で取得する場合**：
      ```bash
-     git clone https://github.com/kysing02/video-subtitle.git
+     git clone https://github.com/kysing02/anime-subtitle-extension.git
      ```
 2. Chrome で `chrome://extensions/` を開き、右上の **「デベロッパーモード」** をオンにします。
 3. **「パッケージ化されていない拡張機能を読み込む」** から、解凍したフォルダ（Git 取得時は [`extension/`](extension/)）を選択します。
