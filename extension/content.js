@@ -80,6 +80,7 @@
       sourceProfiles: SP.cloneDefaultProfiles(),
       preferredSource: SP.DEFAULT_PREFERRED_SOURCE,
       netflixDefaultOffsetSec: -1.0,
+      workKinds: {}, // { [workKey]: 'anime'|'drama' }
       workOffsets: {}, // { [workKey]: number, [`${workKey}::${sourceCat}`]: number }
       workEntries: {}, // { [`${workKey}::s${season}`]: entryId }
     },
@@ -161,6 +162,14 @@
     );
   }
 
+  function applySavedSearchKind(info) {
+    const workKey = info.cleanTitle || cleanWorkTitle(info.workTitle) || info.workTitle || '';
+    const savedKind = workKey ? state.settings.workKinds?.[workKey] : null;
+    if (savedKind === 'anime' || savedKind === 'drama') {
+      info.searchKind = savedKind;
+    }
+  }
+
   // Load saved settings
   function loadSettings() {
     return new Promise((resolve) => {
@@ -215,6 +224,7 @@
 
           delete items.netflixOffsetMigratedV1;
           delete items.styleDefaultsMigratedV2;
+          items.workKinds = items.workKinds && typeof items.workKinds === 'object' ? items.workKinds : {};
           items.workOffsets = items.workOffsets && typeof items.workOffsets === 'object' ? items.workOffsets : {};
           items.workEntries = items.workEntries && typeof items.workEntries === 'object' ? items.workEntries : {};
           Object.assign(state.settings, items);
@@ -269,14 +279,28 @@
 
     if (adapter.resetOnNavigation) {
       const previous = state.workInfo;
+      const samePart = previous.partId && info.partId && previous.partId === info.partId;
+      const partChanged = previous.partId && info.partId && previous.partId !== info.partId;
+      const episodeChanged =
+        previous.episodeNumber != null &&
+        info.episodeNumber != null &&
+        previous.episodeNumber !== info.episodeNumber;
+
+      // Prime can briefly expose another title from a hidden/preview player while
+      // the current playback URL and episode remain unchanged. Treat the playback
+      // identity as authoritative so metadata polling cannot erase or replace an
+      // already selected subtitle because of that transient DOM text.
       if (
+        samePart &&
         previous.workTitle &&
         info.workTitle &&
-        (previous.workTitle !== info.workTitle ||
-          (previous.episodeNumber != null &&
-            info.episodeNumber != null &&
-            previous.episodeNumber !== info.episodeNumber))
+        previous.workTitle !== info.workTitle
       ) {
+        info.workTitle = previous.workTitle;
+        info.cleanTitle = previous.cleanTitle;
+      }
+
+      if (partChanged || episodeChanged) {
         resetPrimeEpisode();
       }
       // Retain known metadata while transient player overlays hide
@@ -290,6 +314,7 @@
             info.searchKind = state.workInfo.searchKind;
           }
         }
+        applySavedSearchKind(info);
         state.workInfo = info;
         updateMetadataUI();
         await maybeAutoSearchAndApply();
@@ -297,6 +322,7 @@
       return state.workInfo;
     }
 
+    applySavedSearchKind(info);
     state.workInfo = info;
     updateMetadataUI();
     await maybeAutoSearchAndApply();
@@ -957,6 +983,15 @@
     if (kindSelect) {
       kindSelect.addEventListener('change', () => {
         kindSelect.dataset.userEdited = '1';
+        const workKey = getWorkStorageKey();
+        if (workKey && (kindSelect.value === 'anime' || kindSelect.value === 'drama')) {
+          const workKinds = {
+            ...(state.settings.workKinds || {}),
+            [workKey]: kindSelect.value,
+          };
+          state.workInfo.searchKind = kindSelect.value;
+          saveSettings({ workKinds });
+        }
       });
     }
 
@@ -1552,6 +1587,7 @@
         'preferredFormat',
         'preferredSource',
         'netflixDefaultOffsetSec',
+        'workKinds',
       ];
       for (const k of syncKeys) {
         if (Object.prototype.hasOwnProperty.call(changes, k)) {

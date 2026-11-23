@@ -86,14 +86,18 @@
 
   function extractTitleRaw() {
     const text = (selector) => document.querySelector(selector)?.textContent?.trim() || '';
-    const direct =
+    const direct = (
       text('.atvwebplayersdk-title-text') ||
       text('[data-automation-id="title"]') ||
-      text('[data-testid="title"]');
+      text('[data-testid="title"]')
+    )
+      .replace(/\s*を観る\s*\|\s*Prime\s+Video\s*$/i, '')
+      .trim();
     if (direct) return direct;
 
     const docTitle = (document.title || '')
       .replace(/^(?:Amazon\s+)?Prime\s+Video\s*[:：\-]\s*/i, '')
+      .replace(/\s*を観る\s*\|\s*Prime\s+Video\s*$/i, '')
       .trim();
     return docTitle && !/^(?:Amazon\s+)?Prime\s+Video$/i.test(docTitle) ? docTitle : '';
   }

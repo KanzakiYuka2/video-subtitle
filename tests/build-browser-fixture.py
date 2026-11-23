@@ -1,19 +1,20 @@
 """Generate an isolated browser fixture. Open its printed path in Chrome."""
 from pathlib import Path
 import argparse
+import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--search", action="store_true", help="Build the offline search regression fixture")
 args = parser.parse_args()
 root = Path(__file__).resolve().parents[1]
-content = (root / 'extension/content.js').read_text()
+content = (root / 'extension/content.js').read_text(encoding='utf-8')
 content = content[:content.rindex("  if (document.readyState === 'loading')")] + '''
 window.testAPI = { state, ensureUI, setCues, renderCurrentSubtitle, toggleLyrics, detectWorkInfo };
 })();'''
 
-registry = (root / 'extension/players/registry.js').read_text()
-danime_adapter = (root / 'extension/players/danime.js').read_text()
-prime_adapter = (root / 'extension/players/prime.js').read_text()
+registry = (root / 'extension/players/registry.js').read_text(encoding='utf-8')
+danime_adapter = (root / 'extension/players/danime.js').read_text(encoding='utf-8')
+prime_adapter = (root / 'extension/players/prime.js').read_text(encoding='utf-8')
 # Force the Prime adapter branch while running from a local file.
 prime_adapter = prime_adapter.replace(
     'return /(^|\\.)(primevideo\\.com|amazon\\.co\\.jp)$/.test(loc.hostname);',
@@ -22,9 +23,9 @@ prime_adapter = prime_adapter.replace(
 
 styles = (root / 'extension/styles.css').read_text()
 i18n_path = root / 'extension/i18n.js'
-i18n_script = i18n_path.read_text() if i18n_path.exists() else ''
+i18n_script = i18n_path.read_text(encoding='utf-8') if i18n_path.exists() else ''
 source_profiles_path = root / 'extension/source_profiles.js'
-source_profiles_script = source_profiles_path.read_text() if source_profiles_path.exists() else ''
+source_profiles_script = source_profiles_path.read_text(encoding='utf-8') if source_profiles_path.exists() else ''
 
 scripts = [
     "window.chrome = {runtime:{onMessage:{addListener(){}}},storage:{local:{set(){}}}};",
@@ -33,9 +34,9 @@ scripts = [
     registry,
     danime_adapter,
     prime_adapter,
-    (root / 'extension/background.js').read_text(),
+    (root / 'extension/background.js').read_text(encoding='utf-8'),
     content,
-    (root / 'tests/prime-browser.js').read_text(),
+    (root / 'tests/prime-browser.js').read_text(encoding='utf-8'),
 ]
 host_styles = '''
 input, select {
@@ -50,11 +51,11 @@ html += ''.join('<script>' + script + '</script>' for script in scripts if scrip
 if args.search:
     scripts = [
         "window.chrome = {runtime:{onMessage:{addListener(){}}}};",
-        (root / 'extension/background.js').read_text(),
-        (root / 'tests/search-browser.js').read_text(),
+        (root / 'extension/background.js').read_text(encoding='utf-8'),
+        (root / 'tests/search-browser.js').read_text(encoding='utf-8'),
     ]
     html = '<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</pre>'
     html += ''.join('<script>' + script + '</script>' for script in scripts)
-out = Path('/tmp/subtitle-search-test.html' if args.search else '/tmp/prime-subtitle-test.html')
-out.write_text(html)
+out = Path(tempfile.gettempdir()) / ('subtitle-search-test.html' if args.search else 'prime-subtitle-test.html')
+out.write_text(html, encoding='utf-8')
 print(out)

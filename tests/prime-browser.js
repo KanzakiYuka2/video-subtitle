@@ -8,6 +8,12 @@
     assert(SubtitlePlayer.primeInfo().episodeNumber === 12, 'Japanese episode, not season');
     document.querySelector('.atvwebplayersdk-subtitle-text').textContent = 'S2 E4 — Test';
     assert(SubtitlePlayer.primeInfo().episodeNumber === 4, 'English episode');
+    const playerTitle = document.querySelector('.atvwebplayersdk-title-text');
+    playerTitle.textContent = '';
+    document.title = '地雷グリコを観る | Prime Video';
+    assert(SubtitlePlayer.primeInfo().workTitle === '地雷グリコ', 'strip Japanese Prime watch-title suffix');
+    document.title = '';
+    playerTitle.textContent = 'Test Drama';
     Object.defineProperty(video, 'currentTime', { value: 20, writable: true });
     Object.defineProperty(video, 'duration', { value: 100 });
     a.ensureUI();
@@ -42,6 +48,10 @@
     assert(titleStyle.opacity === '1', 'input opacity survives host CSS');
     assert(a.state.workInfo.episodeNumber === 4, 'Prime metadata used');
     assert(document.querySelector('#dsub-search-kind').value === 'drama', 'Prime defaults to drama');
+    const kindSelect = document.querySelector('#dsub-search-kind');
+    kindSelect.value = 'anime';
+    kindSelect.dispatchEvent(new Event('change'));
+    assert(a.state.settings.workKinds['Test Drama'] === 'anime', 'remember manual kind by work title');
     a.setCues([{start:10,end:12,text:'First'},{start:20,end:22,text:'Second'}], 'test');
     a.toggleLyrics(true);
     document.querySelector('[data-cue="0"]').click();
@@ -53,9 +63,14 @@
     video.currentTime = 90;
     a.renderCurrentSubtitle();
     assert(document.querySelector('.danime-sub-box').textContent === '', 'no gap placeholder');
+    document.querySelector('.atvwebplayersdk-title-text').textContent = 'Wrong Preview Drama';
+    await a.detectWorkInfo();
+    assert(a.state.cues.length === 2, 'transient Prime title drift preserves loaded subtitles');
+    assert(a.state.workInfo.workTitle === 'Test Drama', 'stable playback keeps its detected title');
     document.querySelector('.atvwebplayersdk-subtitle-text').textContent = 'S2 E5';
     await a.detectWorkInfo();
     assert(!a.state.cues.length && a.state.offsetSec === 0, 'episode transition resets subtitles');
+    assert(document.querySelector('#dsub-search-kind').value === 'anime', 'manual kind overrides later detection');
     const calls = [];
     window.fetch = async (url) => {
       calls.push(String(url));
