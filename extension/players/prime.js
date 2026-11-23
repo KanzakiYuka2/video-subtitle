@@ -86,19 +86,38 @@
 
   function extractTitleRaw() {
     const text = (selector) => document.querySelector(selector)?.textContent?.trim() || '';
-    const direct = (
-      text('.atvwebplayersdk-title-text') ||
-      text('[data-automation-id="title"]') ||
-      text('[data-testid="title"]')
-    )
-      .replace(/\s*を観る\s*\|\s*Prime\s+Video\s*$/i, '')
-      .trim();
-    if (direct) return direct;
+    const cleanAmazonPrefix = (value) =>
+      String(value || '')
+        .replace(/^Amazon\.co\.jp\s*[:：]\s*/i, '')
+        .trim();
+    const validWorkTitle = (value) => {
+      const cleaned = cleanAmazonPrefix(value);
+      // Prime temporarily uses this navigation/category label as its page and
+      // player title while the actual work metadata is still loading.
+      if (/^映画\s*[、,]\s*TV番組\s*[、,]\s*スポーツ番組\s*[、,]\s*ライブTV/i.test(cleaned)) {
+        return '';
+      }
+      return cleaned;
+    };
+    const rawDocTitle = (document.title || '').trim();
+    const watchTitle = rawDocTitle.match(/^(.*?)\s*を観る\s*\|\s*Prime\s+Video\s*$/i);
+    if (watchTitle?.[1]?.trim()) {
+      const title = validWorkTitle(watchTitle[1]);
+      if (title) return title;
+    }
 
-    const docTitle = (document.title || '')
-      .replace(/^(?:Amazon\s+)?Prime\s+Video\s*[:：\-]\s*/i, '')
-      .replace(/\s*を観る\s*\|\s*Prime\s+Video\s*$/i, '')
-      .trim();
+    // Prime reuses generic `data-testid="title"` elements for navigation and
+    // category labels. Only the player-specific title is safe as a DOM fallback.
+    const playerTitle = text('.atvwebplayersdk-title-text');
+    if (playerTitle) {
+      const title = validWorkTitle(playerTitle);
+      if (title) return title;
+    }
+
+    const docTitle = validWorkTitle(
+      rawDocTitle
+        .replace(/^(?:Amazon\s+)?Prime\s+Video\s*[:：\-]\s*/i, '')
+    );
     return docTitle && !/^(?:Amazon\s+)?Prime\s+Video$/i.test(docTitle) ? docTitle : '';
   }
 
